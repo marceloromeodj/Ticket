@@ -1,0 +1,153 @@
+version: '3.8'
+
+services:
+  # ─── PostgreSQL ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: helpdesk_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-helpdesk}
+      POSTGRES_USER: ${DB_USER:-helpdesk}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Definí DB_PASSWORD en .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    # Sin publicar al host: solo accesible dentro de la red de Docker.
+    # Usar `docker compose exec postgres psql ...` para acceso administrativo.
+    networks:
+      - helpdesk_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-helpdesk}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: helpdesk_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Definí REDIS_PASSWORD en .env}
+    volumes:
+      - redis_data:/data
+    # Sin publicar al host: solo accesible dentro de la red de Docker.
+    networks:
+      - helpdesk_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── MinIO (File Storage) ─────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: helpdesk_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:?Definí MINIO_USER en .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?Definí MINIO_PASSWORD en .env}
+    volumes:
+      - minio_data:/data
+    ports:
+      # Solo la consola de administración (9001) se expone al host; la API
+      # de archivos (9000) se sirve internamente vía nginx en /files/.
+      - "9001:9001"
+    networks:
+      - helpdesk_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ─── Backend API ───────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: helpdesk_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-helpdesk}
+      DB_USER: ${DB_USER:-helpdesk}
+      DB_PASSWORD: ${DB_PASSWORD:?Definí DB_PASSWORD en .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Definí REDIS_PASSWORD en .env}
+      JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en .env (openssl rand -base64 64)}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Definí JWT_REFRESH_SECRET en .env (openssl rand -base64 64)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: ${MINIO_USER:?Definí MINIO_USER en .env}
+      MINIO_SECRET_KEY: ${MINIO_PASSWORD:?Definí MINIO_PASSWORD en .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-helpdesk-files}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-}
+      WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-}
+      WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-}
+      WA_APP_SECRET: ${WA_APP_SECRET:-}
+      WA_DEFAULT_COMPANY_ID: ${WA_DEFAULT_COMPANY_ID:-}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@helpdesk.local}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?Definí SUPER_ADMIN_PASSWORD en .env}
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - helpdesk_net
+    # Sin publicar al host: nginx ya expone /api, /socket.io y /webhook.
+
+  # ─── Frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+        VITE_WS_URL: ${VITE_WS_URL:-http://localhost}
+    container_name: helpdesk_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - helpdesk_net
+
+  # ─── Nginx Reverse Proxy ───────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: helpdesk_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - helpdesk_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  uploads_data:
+
+networks:
+  helpdesk_net:
+    driver: bridge

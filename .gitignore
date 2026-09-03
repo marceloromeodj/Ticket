@@ -1,0 +1,30 @@
+# Secrets / entorno
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Builds
+frontend/dist/
+frontend/build/
+
+# Uploads / datos locales
+backend/uploads/
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker / SSL local
+nginx/ssl/
