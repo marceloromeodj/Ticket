@@ -1,11 +1,11 @@
 const router = require('express').Router();
 const { Op } = require('sequelize');
 const { sequelize, Problem, Ticket, User, Category } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { getNextSequentialNumber } = require('../utils/sequentialNumber');
 const { logAudit } = require('../utils/audit');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin', 'supervisor', 'agent'));
+router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin', 'supervisor', 'agent'), requireModule('problems'));
 
 const includeRefs = [
   { model: User,     as: 'agent',    attributes: ['id', 'name', 'avatar_url'] },

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Building2, Users, GitBranch } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Building2, Users, GitBranch, ToggleLeft } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -99,8 +99,55 @@ function CompanyModal({ company, onClose }) {
   );
 }
 
+function ModulesModal({ company, onClose }) {
+  const queryClient = useQueryClient();
+  const [modules, setModules] = useState(company.modules || {});
+
+  const { data: defs = [] } = useQuery({
+    queryKey: ['module-definitions'],
+    queryFn: () => api.get('/companies/modules/definitions').then(r => r.data?.modules || []),
+  });
+
+  const mutation = useMutation({
+    mutationFn: () => api.put(`/companies/${company.id}/modules`, modules),
+    onSuccess: () => { queryClient.invalidateQueries(['companies']); toast.success('Módulos actualizados'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Módulos — {company.name}</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <div className="p-6 space-y-1 max-h-96 overflow-y-auto">
+          {defs.map(m => (
+            <label key={m.key} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+              <span className="text-sm text-gray-700">{m.label}</span>
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded"
+                checked={modules[m.key] !== false}
+                onChange={e => setModules(mods => ({ ...mods, [m.key]: e.target.checked }))}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-3 justify-end px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="btn-ghost">Cancelar</button>
+          <button onClick={() => mutation.mutate()} disabled={mutation.isLoading} className="btn-primary">
+            {mutation.isLoading ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CompanyList() {
   const [modal, setModal] = useState(null);
+  const [modulesFor, setModulesFor] = useState(null);
   const queryClient = useQueryClient();
 
   const { data = [], isLoading } = useQuery({
@@ -142,6 +189,9 @@ export default function CompanyList() {
                 </div>
               </div>
               <div className="flex gap-1">
+                <button onClick={() => setModulesFor(c)} className="btn-ghost p-1.5" title="Módulos habilitados">
+                  <ToggleLeft size={14} />
+                </button>
                 <button onClick={() => setModal(c)} className="btn-ghost p-1.5">
                   <Pencil size={14} />
                 </button>
@@ -197,6 +247,7 @@ export default function CompanyList() {
       </div>
 
       {modal !== null && <CompanyModal company={modal} onClose={() => setModal(null)} />}
+      {modulesFor && <ModulesModal company={modulesFor} onClose={() => setModulesFor(null)} />}
     </div>
   );
 }

@@ -2,6 +2,9 @@ const router = require('express').Router();
 const ctrl = require('../controllers/reportController');
 const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
 
+// Nota: no se gatea con requireModule -- /reports/overview y afines
+// también alimentan el Dashboard principal, no solo la pantalla de
+// Reportes, así que deshabilitar el módulo rompería el home.
 router.use(authenticate, tenantMiddleware, authorize('super_admin','admin','supervisor'));
 
 router.get('/overview',          ctrl.overview);

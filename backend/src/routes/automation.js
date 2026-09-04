@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const { AutomationRule } = require('../models');
-const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected, requireModule } = require('../middleware/auth');
 
 // Las reglas de automatización son de una empresa concreta.
-router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'), requireCompanySelected);
+router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'), requireCompanySelected, requireModule('automation'));
 
 router.get('/', async (req, res, next) => {
   try {

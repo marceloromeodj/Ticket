@@ -1,10 +1,10 @@
 const router = require('express').Router();
 const { Op } = require('sequelize');
 const { Contract, Vendor, Asset } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('contracts'));
 
 const includeRefs = [
   { model: Vendor, as: 'vendor', attributes: ['id', 'name'] },

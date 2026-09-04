@@ -7,7 +7,7 @@ const { buildReportWorkbook, buildReportPDF } = require('../services/reportExpor
 const { notificationChannelService } = require('../services/notificationChannelService');
 const { runBackup } = require('../scripts/backup');
 const { renderTemplate } = require('../services/templateService');
-const { AutomationRule, Ticket, ScheduledReport, Contract, User } = require('../models');
+const { AutomationRule, Ticket, ScheduledReport, Contract, User, Company } = require('../models');
 const { Op } = require('sequelize');
 
 const FREQUENCY_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -34,7 +34,14 @@ function startCronJobs() {
         where: { event: 'time_based', active: true },
       });
 
+      const disabledCompanies = new Set(
+        (await Company.findAll({ where: {}, attributes: ['id', 'modules'] }))
+          .filter(c => c.modules?.automation === false)
+          .map(c => c.id)
+      );
+
       for (const rule of rules) {
+        if (disabledCompanies.has(rule.company_id)) continue;
         const tc = rule.time_condition;
         if (!tc?.hours || !tc?.field) continue;
 
@@ -60,7 +67,13 @@ function startCronJobs() {
   new CronJob('0 7 * * *', async () => {
     try {
       const reports = await ScheduledReport.findAll({ where: { active: true } });
+      const disabledCompanies = new Set(
+        (await Company.findAll({ where: {}, attributes: ['id', 'modules'] }))
+          .filter(c => c.modules?.scheduled_reports === false)
+          .map(c => c.id)
+      );
       for (const report of reports) {
+        if (disabledCompanies.has(report.company_id)) continue;
         if (!isReportDue(report)) continue;
         try {
           const isPdf = report.format === 'pdf';

@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const { KnowledgeArticle, Category } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('knowledge'));
 
 router.get('/', async (req, res, next) => {
   try {

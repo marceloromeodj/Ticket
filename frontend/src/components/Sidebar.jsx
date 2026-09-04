@@ -12,20 +12,20 @@ import { clsx } from 'clsx';
 const NAV = [
   { to: '/',          label: 'Dashboard',       icon: LayoutDashboard, exact: true },
   { to: '/tickets',   label: 'Tickets',          icon: Ticket },
-  { to: '/knowledge', label: 'Base de Conocimiento', icon: BookOpen },
+  { to: '/knowledge', label: 'Base de Conocimiento', icon: BookOpen, module: 'knowledge' },
   { type: 'divider' },
-  { to: '/services',  label: 'Catálogo de servicios', icon: LayoutGrid, roles: ['super_admin','admin','supervisor'] },
-  { to: '/assets',    label: 'Activos (CMDB)',   icon: Database,      roles: ['super_admin','admin','supervisor','agent'] },
-  { to: '/problems',  label: 'Problemas',        icon: AlertOctagon,  roles: ['super_admin','admin','supervisor','agent'] },
-  { to: '/changes',   label: 'Cambios (RFC)',    icon: GitPullRequest, roles: ['super_admin','admin','supervisor','agent'] },
-  { to: '/contracts', label: 'Contratos y proveedores', icon: FileText, roles: ['super_admin','admin'] },
+  { to: '/services',  label: 'Catálogo de servicios', icon: LayoutGrid, roles: ['super_admin','admin','supervisor'], module: 'services' },
+  { to: '/assets',    label: 'Activos (CMDB)',   icon: Database,      roles: ['super_admin','admin','supervisor','agent'], module: 'assets' },
+  { to: '/problems',  label: 'Problemas',        icon: AlertOctagon,  roles: ['super_admin','admin','supervisor','agent'], module: 'problems' },
+  { to: '/changes',   label: 'Cambios (RFC)',    icon: GitPullRequest, roles: ['super_admin','admin','supervisor','agent'], module: 'changes' },
+  { to: '/contracts', label: 'Contratos y proveedores', icon: FileText, roles: ['super_admin','admin'], module: 'contracts' },
   { type: 'divider' },
   { to: '/agents',    label: 'Agentes',          icon: Users,         roles: ['super_admin','admin','supervisor'] },
   { to: '/branches',  label: 'Sucursales',       icon: GitBranch,     roles: ['super_admin','admin'] },
   { to: '/companies', label: 'Empresas',         icon: Building2,     roles: ['super_admin'] },
   { type: 'divider' },
   { to: '/reports',   label: 'Reportes',         icon: BarChart2,     roles: ['super_admin','admin','supervisor'] },
-  { to: '/audit',     label: 'Auditoría',        icon: ShieldCheck,   roles: ['super_admin','admin'] },
+  { to: '/audit',     label: 'Auditoría',        icon: ShieldCheck,   roles: ['super_admin','admin'], module: 'audit' },
   { to: '/settings',  label: 'Configuración',    icon: Settings,      roles: ['super_admin','admin'] },
 ];
 
@@ -36,8 +36,11 @@ export default function Sidebar() {
   const navigate = useNavigate();
 
   const canSee = (item) => {
-    if (!item.roles) return true;
-    return item.roles.includes(user?.role);
+    if (item.roles && !item.roles.includes(user?.role)) return false;
+    // El super_admin siempre ve todo, sin importar los módulos que estén
+    // deshabilitados para la empresa que esté administrando en ese momento.
+    if (item.module && user?.role !== 'super_admin' && user?.company?.modules?.[item.module] === false) return false;
+    return true;
   };
 
   return (

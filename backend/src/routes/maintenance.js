@@ -1,10 +1,10 @@
 const router = require('express').Router();
 const { Op } = require('sequelize');
 const { MaintenancePlan, MaintenanceLog, Asset, User } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('assets'));
 
 function addDays(date, days) {
   const d = new Date(date);

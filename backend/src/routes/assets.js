@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Asset, Branch, User, Ticket, AuditLog } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const { Op } = require('sequelize');
 
@@ -15,7 +15,7 @@ const MOVEMENT_FIELDS = {
   status:    'Estado',
 };
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('assets'));
 
 const includeRefs = [
   { model: Branch, as: 'branch', attributes: ['id', 'name'] },

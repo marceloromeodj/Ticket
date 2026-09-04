@@ -1,12 +1,12 @@
 const router = require('express').Router();
 const { AuditLog, User } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireModule } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
 // Solo admins pueden ver el registro de auditoría de su empresa;
 // super_admin sin empresa seleccionada ve todo (mismo criterio que el
 // resto de la app, vía companyScope).
-router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'));
+router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'), requireModule('audit'));
 
 router.get('/', async (req, res, next) => {
   try {

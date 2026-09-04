@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { ScheduledReport } = require('../models');
-const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected, requireModule } = require('../middleware/auth');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin', 'supervisor'), requireCompanySelected);
+router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin', 'supervisor'), requireCompanySelected, requireModule('scheduled_reports'));
 
 router.get('/', async (req, res, next) => {
   try {

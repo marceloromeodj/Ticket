@@ -1,9 +1,9 @@
 const router = require('express').Router();
 const { Service, User, SLAPolicy } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('services'));
 
 const includeRefs = [
   { model: User,       as: 'owner',     attributes: ['id', 'name', 'avatar_url'] },

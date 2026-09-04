@@ -9,12 +9,12 @@ import { clsx } from 'clsx';
 const TABS = [
   { id: 'general', label: 'General', icon: Shield },
   { id: 'sla', label: 'Políticas SLA', icon: Clock },
-  { id: 'automation', label: 'Automatizaciones', icon: Zap },
+  { id: 'automation', label: 'Automatizaciones', icon: Zap, module: 'automation' },
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
-  { id: 'channels', label: 'Notificaciones', icon: Send },
-  { id: 'scheduled-reports', label: 'Reportes programados', icon: FileSpreadsheet },
+  { id: 'channels', label: 'Notificaciones', icon: Send, module: 'channels' },
+  { id: 'scheduled-reports', label: 'Reportes programados', icon: FileSpreadsheet, module: 'scheduled_reports' },
   { id: 'templates', label: 'Plantillas', icon: FileText },
-  { id: 'api', label: 'API', icon: Key },
+  { id: 'api', label: 'API', icon: Key, module: 'api' },
 ];
 
 // ─── Webhook de monitoreo (Zabbix/PRTG) ──────────────────────────────────────
@@ -1318,18 +1318,21 @@ function TemplateSettings() {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function Settings() {
+  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('general');
+  const modules = user?.company?.modules;
+  const visibleTabs = TABS.filter(t => !t.module || user?.role === 'super_admin' || modules?.[t.module] !== false);
   const ActiveTab = {
     general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings,
     channels: ChannelSettings, 'scheduled-reports': ScheduledReportSettings,
     api: ApiTokenSettings, templates: TemplateSettings,
-  }[activeTab];
+  }[visibleTabs.some(t => t.id === activeTab) ? activeTab : 'general'];
 
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
       <div className="flex gap-1 border-b border-gray-200">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {visibleTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}

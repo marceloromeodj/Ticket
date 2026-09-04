@@ -21,7 +21,10 @@ async function authenticate(req, res, next) {
     // todas ellas, no solo de la principal.
     const user = await User.findOne({
       where: { id: decoded.id, active: true },
-      include: [{ association: 'branches', attributes: ['id'] }],
+      include: [
+        { association: 'branches', attributes: ['id'] },
+        { association: 'company', attributes: ['id', 'modules'] },
+      ],
     });
 
     if (!user) {
@@ -114,4 +117,22 @@ function requireCompanySelected(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, authorize, adminOrSuperAdmin, tenantMiddleware, companyScope, requireCompanySelected };
+/**
+ * Bloquea un grupo de rutas si el módulo no está habilitado para la
+ * empresa (Company.modules, ver config/modules.js) -- por defecto todos
+ * habilitados, así que solo importa cuando un super_admin lo desactivó
+ * explícitamente. El super_admin nunca queda bloqueado por esto: los
+ * módulos limitan la experiencia de los tenants, no al operador de la
+ * plataforma.
+ */
+function requireModule(key) {
+  return (req, res, next) => {
+    if (req.user?.role === 'super_admin') return next();
+    if (req.user?.company?.modules?.[key] === false) {
+      return res.status(403).json({ error: 'Este módulo no está habilitado para tu empresa' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize, adminOrSuperAdmin, tenantMiddleware, companyScope, requireCompanySelected, requireModule };

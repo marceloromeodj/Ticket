@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { ApiToken } = require('../models');
+const { ApiToken, Company } = require('../models');
 
 /**
  * Autenticación para la API externa de integraciones (/api/external/*):
@@ -19,6 +19,11 @@ async function apiTokenAuth(req, res, next) {
 
   const token = await ApiToken.findOne({ where: { token_hash: tokenHash, active: true } });
   if (!token) return res.status(401).json({ error: 'Token de API inválido' });
+
+  const company = await Company.findByPk(token.company_id, { attributes: ['modules'] });
+  if (company?.modules?.api === false) {
+    return res.status(403).json({ error: 'El módulo de API externa no está habilitado para esta empresa' });
+  }
 
   token.update({ last_used_at: new Date() }).catch(() => {});
 

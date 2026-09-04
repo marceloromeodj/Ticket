@@ -12,6 +12,10 @@ const automationService = {
    */
   async run(event, ticket, actor) {
     try {
+      const { Company } = require('../models');
+      const company = await Company.findByPk(ticket.company_id, { attributes: ['modules'] });
+      if (company?.modules?.automation === false) return;
+
       const rules = await AutomationRule.findAll({
         where: { company_id: ticket.company_id, event, active: true },
         order: [['position', 'ASC']],

@@ -3,6 +3,7 @@ const { Company, Branch, User } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
 const { getSubdomainSlug } = require('../utils/subdomain');
 const { logAudit } = require('../utils/audit');
+const { MODULE_DEFS } = require('../config/modules');
 
 // Público (sin autenticar): resuelve la empresa a partir del subdominio de
 // la URL, para mostrar su nombre/logo en la pantalla de login (y para que
@@ -50,6 +51,13 @@ router.post('/', authorize('super_admin'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Lista de módulos disponibles (para armar el toggle en el frontend).
+// Debe ir antes de /:id -- si no, Express interpreta "modules" como un
+// id y esta ruta nunca se alcanza.
+router.get('/modules/definitions', authorize('super_admin'), (req, res) => {
+  res.json({ modules: MODULE_DEFS });
+});
+
 router.get('/:id', authorize('super_admin','admin'), async (req, res, next) => {
   try {
     const where = { id: req.user.role === 'super_admin' ? req.params.id : req.companyId };
@@ -76,6 +84,29 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
     await company.update(updates);
     await logAudit(req, { action: 'update', entity_type: 'Company', entity_id: company.id, company_id: company.id, before, after: company.toJSON() });
     res.json(company);
+  } catch (err) { next(err); }
+});
+
+// Habilitar/deshabilitar módulos de funciones -- solo super_admin. Un
+// admin de la empresa NO puede tocar esto (si pudiera, el control de
+// qué funciones tiene disponibles no serviría de nada).
+router.put('/:id/modules', authorize('super_admin'), async (req, res, next) => {
+  try {
+    const company = await Company.findByPk(req.params.id);
+    if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
+    if (typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Se espera un objeto {modulo: true/false}' });
+    }
+
+    const before = company.modules;
+    const validKeys = new Set(MODULE_DEFS.map(m => m.key));
+    const updates = {};
+    Object.entries(req.body).forEach(([k, v]) => { if (validKeys.has(k)) updates[k] = !!v; });
+
+    const modules = { ...company.modules, ...updates };
+    await company.update({ modules });
+    await logAudit(req, { action: 'update_modules', entity_type: 'Company', entity_id: company.id, company_id: company.id, before, after: modules });
+    res.json({ modules });
   } catch (err) { next(err); }
 });
 

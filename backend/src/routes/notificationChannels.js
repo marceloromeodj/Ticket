@@ -1,10 +1,10 @@
 const router = require('express').Router();
 const { NotificationChannel } = require('../models');
-const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { notificationChannelService } = require('../services/notificationChannelService');
 
 // Configuración por empresa: quién puede tocar esto es admin/super_admin.
-router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'), requireCompanySelected);
+router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'), requireCompanySelected, requireModule('channels'));
 
 router.get('/', async (req, res, next) => {
   try {

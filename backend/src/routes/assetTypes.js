@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { AssetType, Asset } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('assets'));
 
 // Lista fija que existía como ENUM antes de este módulo -- se usa para
 // poblar una empresa la primera vez que pide sus tipos de activo, así

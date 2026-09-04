@@ -21,7 +21,10 @@ const notificationChannelService = {
    * silencio por canal (un webhook roto no debe frenar al resto).
    */
   async broadcast(companyId, event, text) {
-    const { NotificationChannel } = require('../models');
+    const { NotificationChannel, Company } = require('../models');
+    const company = await Company.findByPk(companyId, { attributes: ['modules'] });
+    if (company?.modules?.channels === false) return;
+
     const channels = await NotificationChannel.findAll({ where: { company_id: companyId, active: true } });
 
     for (const channel of channels) {

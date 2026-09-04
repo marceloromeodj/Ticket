@@ -1,10 +1,10 @@
 const crypto = require('crypto');
 const router = require('express').Router();
 const { ApiToken } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'), requireCompanySelected);
+router.use(authenticate, tenantMiddleware, authorize('super_admin', 'admin'), requireCompanySelected, requireModule('api'));
 
 router.get('/', async (req, res, next) => {
   try {

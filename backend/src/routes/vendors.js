@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { Vendor } = require('../models');
-const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected, requireModule } = require('../middleware/auth');
 
-router.use(authenticate, tenantMiddleware);
+router.use(authenticate, tenantMiddleware, requireModule('contracts'));
 
 router.get('/', async (req, res, next) => {
   try {

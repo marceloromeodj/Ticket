@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const crypto = require('crypto');
+const { DEFAULT_MODULES } = require('../config/modules');
 
 module.exports = (sequelize) => {
 const Company = sequelize.define('Company', {
@@ -49,6 +50,10 @@ const Company = sequelize.define('Company', {
   // combina con business_hours para el cálculo de vencimiento de SLA
   // cuando la política tiene business_hours_only=true.
   holidays: { type: DataTypes.JSONB, defaultValue: [] },
+  // Módulos de funciones habilitados para esta empresa (ver
+  // config/modules.js). Solo el super_admin puede tocarlo -- ver
+  // PUT /companies/:id/modules y middleware/auth.requireModule.
+  modules: { type: DataTypes.JSONB, defaultValue: DEFAULT_MODULES },
   settings: {
     type: DataTypes.JSONB,
     defaultValue: {
