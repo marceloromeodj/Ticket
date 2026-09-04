@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { TicketSurvey } = require('../models');
 const { emailService } = require('./emailService');
+const { renderTemplate } = require('./templateService');
 
 const surveyService = {
   /**
@@ -26,17 +27,18 @@ const surveyService = {
 
     const surveyUrl = `${process.env.FRONTEND_URL}/portal/survey/${token}`;
     try {
+      const { subject, body } = await renderTemplate(ticket.company_id, 'survey_invite', {
+        requester_name: ticket.requester_name || '',
+        ticket_number:  ticket.ticket_number,
+        subject:        ticket.subject,
+        status_label:   ticket.status === 'closed' ? 'cerrado' : 'resuelto',
+        survey_url:     surveyUrl,
+      });
       await emailService.sendRaw({
         to: ticket.requester_email,
         companyId: ticket.company_id,
-        subject: `¿Cómo fue tu experiencia? — Ticket #${ticket.ticket_number}`,
-        html: `
-          <p>Hola ${ticket.requester_name || ''},</p>
-          <p>Tu ticket <strong>#${ticket.ticket_number}</strong> (${ticket.subject}) fue marcado como
-          <strong>${ticket.status === 'closed' ? 'cerrado' : 'resuelto'}</strong>.</p>
-          <p>¿Podrías calificar la atención que recibiste?</p>
-          <p><a href="${surveyUrl}">Calificar ahora</a></p>
-        `,
+        subject,
+        html: body,
         text: `Calificá la atención que recibiste en el ticket #${ticket.ticket_number}: ${surveyUrl}`,
       });
     } catch (err) {

@@ -36,6 +36,10 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
   category_id:    DataTypes.UUID,
   sla_policy_id:  DataTypes.UUID,
   agent_id:       DataTypes.UUID,
+  // Asignación a un equipo completo (User.groups), además o en vez de un
+  // agente individual -- usado por la acción "Asignar a un grupo" del
+  // motor de automatizaciones.
+  assigned_group: DataTypes.STRING(100),
   requester_id:   DataTypes.UUID,  // Puede ser customer o agente que abre
   requester_name:  DataTypes.STRING(200),
   requester_email: DataTypes.STRING(200),

@@ -1,8 +1,10 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Instalar dependencias del sistema
-RUN apk add --no-cache python3 make g++ curl
+# Instalar dependencias del sistema. postgresql16-client trae pg_dump,
+# usado por src/scripts/backup.js (versión emparejada con la imagen
+# postgres:16-alpine del docker-compose).
+RUN apk add --no-cache python3 make g++ curl postgresql16-client
 
 # Copiar archivos de dependencias
 COPY package*.json ./

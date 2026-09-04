@@ -18,6 +18,7 @@ const massIncidentService = {
     const { Ticket, User } = require('../models');
     const { notificationService } = require('./notificationService');
     const { notificationChannelService } = require('./notificationChannelService');
+    const { renderTemplate } = require('./templateService');
 
     const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000);
     const orConditions = [];
@@ -56,8 +57,8 @@ const massIncidentService = {
       });
     }
 
-    notificationChannelService
-      .broadcast(ticket.company_id, 'major_incident', `🚨 ${summary}`)
+    renderTemplate(ticket.company_id, 'major_incident', { count: similar.length, window_minutes: WINDOW_MINUTES, ticket_numbers: ticketNumbers })
+      .then(text => notificationChannelService.broadcast(ticket.company_id, 'major_incident', text))
       .catch(err => console.error('[MassIncident] Error notificando canales:', err.message));
 
     return { count: similar.length, ticket_ids: similar.map(t => t.id) };

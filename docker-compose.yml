@@ -114,8 +114,16 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      # Backup diario (3am) de base de datos + adjuntos, ver
+      # src/scripts/backup.js. Días de retención antes de borrar backups
+      # viejos automáticamente.
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
       - uploads_data:/app/uploads
+      # Bind mount (no volumen con nombre) para que los backups queden
+      # visibles en ~/helpdesk/backups en el host, fáciles de copiar afuera
+      # del servidor (scp/rsync) -- un volumen de Docker no es tan a mano.
+      - ./backups:/app/backups
     networks:
       - helpdesk_net
     # Sin publicar al host: nginx ya expone /api, /socket.io y /webhook.

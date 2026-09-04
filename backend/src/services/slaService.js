@@ -1,6 +1,7 @@
 const moment = require('moment-timezone');
-const { SLAPolicy, Ticket } = require('../models');
+const { SLAPolicy, Ticket, Company } = require('../models');
 const { Op } = require('sequelize');
+const { addBusinessMinutes } = require('../utils/businessHours');
 
 const slaService = {
   /**
@@ -34,15 +35,29 @@ const slaService = {
   },
 
   /**
-   * Calcular fechas de vencimiento SLA
+   * Calcular fechas de vencimiento SLA. Si la política tiene
+   * business_hours_only, el conteo respeta el horario de atención y los
+   * feriados de la empresa (antes ese checkbox no tenía ningún efecto:
+   * siempre se calculaba en tiempo corrido).
    */
-  calculateDueDates(policy, priority) {
+  async calculateDueDates(policy, priority, companyId) {
     const firstResponseMins = policy.first_response_time?.[priority] || 240;
     const resolutionMins    = policy.resolution_time?.[priority]     || 1440;
 
+    if (!policy.business_hours_only || !companyId) {
+      return {
+        first_response_due_at: moment().add(firstResponseMins, 'minutes').toDate(),
+        resolution_due_at:     moment().add(resolutionMins, 'minutes').toDate(),
+      };
+    }
+
+    const company = await Company.findByPk(companyId, { attributes: ['business_hours', 'holidays', 'timezone'] });
+    const opts = { businessHours: company?.business_hours, holidays: company?.holidays || [], timezone: company?.timezone || 'UTC' };
+    const now = new Date();
+
     return {
-      first_response_due_at: moment().add(firstResponseMins, 'minutes').toDate(),
-      resolution_due_at:     moment().add(resolutionMins, 'minutes').toDate(),
+      first_response_due_at: addBusinessMinutes(now, firstResponseMins, opts),
+      resolution_due_at:     addBusinessMinutes(now, resolutionMins, opts),
     };
   },
 
@@ -73,14 +88,14 @@ const slaService = {
       );
 
       const { notificationChannelService } = require('./notificationChannelService');
+      const { renderTemplate } = require('./templateService');
       const byCompany = {};
       toBreach.forEach(t => { (byCompany[t.company_id] = byCompany[t.company_id] || []).push(t); });
       for (const [companyId, tickets] of Object.entries(byCompany)) {
-        const list = tickets.slice(0, 5).map(t => `#${t.ticket_number} (${t.subject})`).join(', ');
-        notificationChannelService.broadcast(
-          companyId, 'sla_breach',
-          `⏰ SLA incumplido en ${tickets.length} ticket(s): ${list}`
-        ).catch(err => console.error('[SLA] Error notificando canales:', err.message));
+        const ticket_list = tickets.slice(0, 5).map(t => `#${t.ticket_number} (${t.subject})`).join(', ');
+        renderTemplate(companyId, 'sla_breach', { count: tickets.length, ticket_list })
+          .then(text => notificationChannelService.broadcast(companyId, 'sla_breach', text))
+          .catch(err => console.error('[SLA] Error notificando canales:', err.message));
       }
     }
 

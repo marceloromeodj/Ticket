@@ -68,4 +68,4 @@ const storageService = {
   },
 };
 
-module.exports = { storageService };
+module.exports = { storageService, getMinioClient, BUCKET };

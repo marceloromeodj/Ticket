@@ -7,12 +7,20 @@ const adminOnly = authorize('super_admin', 'admin');
 // La configuración es de una empresa concreta.
 router.use(authenticate, tenantMiddleware, requireCompanySelected);
 
-// Configuración general de la empresa
+// Configuración general de la empresa. name/primary_color/timezone/
+// logo_url/domain son columnas reales de Company; `settings` es el JSONB
+// con las banderas de features (auto_assign, ticket_prefix, etc). Antes
+// esta ruta devolvía/guardaba SOLO el JSONB, así que el formulario de
+// "Configuración general" (que edita name/color/timezone) en realidad
+// nunca tocaba esas columnas: quedaban mezcladas dentro del JSONB y el
+// resto de la app (branding del login, etc.) seguía viendo los valores
+// viejos sin importar lo que se guardara.
 router.get('/', adminOnly, async (req, res, next) => {
   try {
     const company = await Company.findByPk(req.companyId);
     if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
-    res.json(company.settings);
+    const { name, primary_color, timezone, logo_url, domain, settings } = company;
+    res.json({ name, primary_color, timezone, logo_url, domain, settings });
   } catch (err) { next(err); }
 });
 
@@ -20,18 +28,52 @@ router.put('/', adminOnly, async (req, res, next) => {
   try {
     const company = await Company.findByPk(req.companyId);
     if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
-    const settings = { ...company.settings, ...req.body };
-    await company.update({ settings });
-    res.json(settings);
+
+    const updates = {};
+    ['name', 'primary_color', 'timezone', 'logo_url', 'domain'].forEach((f) => {
+      if (req.body[f] !== undefined) updates[f] = req.body[f];
+    });
+    if (req.body.settings !== undefined) {
+      updates.settings = { ...company.settings, ...req.body.settings };
+    }
+
+    await company.update(updates);
+    const { name, primary_color, timezone, logo_url, domain, settings } = company;
+    res.json({ name, primary_color, timezone, logo_url, domain, settings });
   } catch (err) { next(err); }
 });
 
 // Horario de atención
+router.get('/business-hours', adminOnly, async (req, res, next) => {
+  try {
+    const company = await Company.findByPk(req.companyId, { attributes: ['business_hours'] });
+    res.json(company?.business_hours || {});
+  } catch (err) { next(err); }
+});
+
 router.put('/business-hours', adminOnly, async (req, res, next) => {
   try {
     const company = await Company.findByPk(req.companyId);
     await company.update({ business_hours: req.body });
     res.json(company.business_hours);
+  } catch (err) { next(err); }
+});
+
+// Feriados (días puntuales sin atención, afecta el vencimiento de SLA
+// cuando la política tiene "Solo horario laboral").
+router.get('/holidays', adminOnly, async (req, res, next) => {
+  try {
+    const company = await Company.findByPk(req.companyId, { attributes: ['holidays'] });
+    res.json(company?.holidays || []);
+  } catch (err) { next(err); }
+});
+
+router.put('/holidays', adminOnly, async (req, res, next) => {
+  try {
+    const company = await Company.findByPk(req.companyId);
+    if (!Array.isArray(req.body)) return res.status(400).json({ error: 'Se espera un array de fechas' });
+    await company.update({ holidays: req.body });
+    res.json(company.holidays);
   } catch (err) { next(err); }
 });
 

@@ -1,3 +1,4 @@
+const axios = require('axios');
 const { AutomationRule, User, Ticket, TicketMessage, Notification } = require('../models');
 const { emitToUser } = require('../config/socket');
 const { emailService } = require('./emailService');
@@ -79,6 +80,27 @@ const automationService = {
             await Ticket.update({ category_id: action.value }, { where: { id: ticket.id } });
             break;
 
+          case 'assign_group': {
+            const group = action.value;
+            if (!group) break;
+            await Ticket.update({ assigned_group: group }, { where: { id: ticket.id } });
+
+            const { Op } = require('sequelize');
+            const members = await User.findAll({
+              where: { company_id: ticket.company_id, active: true, groups: { [Op.contains]: [group] } },
+              attributes: ['id'],
+            });
+            for (const member of members) {
+              await Notification.create({
+                user_id: member.id, ticket_id: ticket.id, type: 'system',
+                title: `Ticket asignado al grupo "${group}"`,
+                message: `Ticket #${ticket.ticket_number}: ${ticket.subject}`,
+              });
+              emitToUser(member.id, 'notification:new', { rule: rule.name, ticket_id: ticket.id });
+            }
+            break;
+          }
+
           case 'add_note':
             await TicketMessage.create({
               ticket_id:    ticket.id,
@@ -117,6 +139,20 @@ const automationService = {
               });
               emitToUser(agentId, 'notification:new', { rule: rule.name, ticket_id: ticket.id });
             }
+            break;
+          }
+
+          case 'call_webhook': {
+            const { url } = action.value || {};
+            if (!url) break;
+            await axios.post(url, {
+              event: rule.event,
+              rule_name: rule.name,
+              ticket: {
+                id: ticket.id, ticket_number: ticket.ticket_number, subject: ticket.subject,
+                status: ticket.status, priority: ticket.priority, requester_email: ticket.requester_email,
+              },
+            }, { timeout: 5000 });
             break;
           }
 

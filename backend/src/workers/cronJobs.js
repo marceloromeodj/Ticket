@@ -5,6 +5,8 @@ const { automationService } = require('../services/automationService');
 const { emailService } = require('../services/emailService');
 const { buildReportWorkbook, buildReportPDF } = require('../services/reportExportService');
 const { notificationChannelService } = require('../services/notificationChannelService');
+const { runBackup } = require('../scripts/backup');
+const { renderTemplate } = require('../services/templateService');
 const { AutomationRule, Ticket, ScheduledReport, Contract, User } = require('../models');
 const { Op } = require('sequelize');
 
@@ -111,8 +113,8 @@ function startCronJobs() {
             link: '/contracts',
           });
         }
-        notificationChannelService
-          .broadcast(contract.company_id, 'contract_expiring', `📄 ${summary}`)
+        renderTemplate(contract.company_id, 'contract_expiring', { name: contract.name, days_left: daysLeft, end_date: contract.end_date })
+          .then(text => notificationChannelService.broadcast(contract.company_id, 'contract_expiring', text))
           .catch(err => console.error('[Cron] Error notificando canales de contrato:', err.message));
 
         await contract.update({ alert_sent: true });
@@ -122,7 +124,16 @@ function startCronJobs() {
     }
   }, null, true);
 
-  console.log('[Cron] Jobs iniciados: SLA checker (10min), Time-based automation (1h), Reportes programados (diario 07:00), Contratos por vencer (diario 08:00)');
+  // ─── Backup de base de datos + adjuntos: diario ──────────────
+  new CronJob('0 3 * * *', async () => {
+    try {
+      await runBackup();
+    } catch (err) {
+      console.error('[Cron] Error en backup automático:', err.message);
+    }
+  }, null, true);
+
+  console.log('[Cron] Jobs iniciados: SLA checker (10min), Time-based automation (1h), Reportes programados (diario 07:00), Contratos por vencer (diario 08:00), Backup (diario 03:00)');
 }
 
 module.exports = { startCronJobs };

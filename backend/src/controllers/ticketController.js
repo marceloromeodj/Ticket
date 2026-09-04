@@ -11,6 +11,7 @@ const { logAudit }           = require('../utils/audit');
 const { surveyService }      = require('../services/surveyService');
 const { notificationChannelService } = require('../services/notificationChannelService');
 const { massIncidentService } = require('../services/massIncidentService');
+const { renderTemplate } = require('../services/templateService');
 
 // Reemplaza la URL pública guardada por una URL firmada de corta duración,
 // generada recién ahora que ya se validó que el usuario tiene acceso al
@@ -221,7 +222,7 @@ async function create(req, res, next) {
 
     // Resolver SLA
     const slaPolicy = await slaService.findApplicablePolicy(req.companyId, { priority, category_id, source });
-    const slaDates  = slaPolicy ? slaService.calculateDueDates(slaPolicy, priority) : {};
+    const slaDates  = slaPolicy ? await slaService.calculateDueDates(slaPolicy, priority, req.companyId) : {};
 
     const ticket = await Ticket.create({
       company_id:    req.companyId,
@@ -318,8 +319,8 @@ async function create(req, res, next) {
     // Canales externos (Slack/Telegram) para tickets urgentes, y detección
     // de incidentes masivos -- ninguno de los dos debe frenar la respuesta.
     if (priority === 'urgent') {
-      notificationChannelService
-        .broadcast(req.companyId, 'ticket_urgent', `🔴 Ticket urgente #${ticket_number}: ${subject}`)
+      renderTemplate(req.companyId, 'ticket_urgent', { ticket_number, subject })
+        .then(text => notificationChannelService.broadcast(req.companyId, 'ticket_urgent', text))
         .catch(err => console.error('[Ticket] Error notificando canales:', err.message));
     }
     massIncidentService.checkAndNotify(ticket).catch(err => console.error('[Ticket] Error en detección de incidente masivo:', err.message));

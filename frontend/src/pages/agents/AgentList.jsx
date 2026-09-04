@@ -40,6 +40,7 @@ function AgentModal({ agent, onClose }) {
     // Sucursales además de la principal — un agente puede pertenecer a
     // varias si la empresa tiene más de una.
     branch_ids: (agent?.branches || []).map(b => b.id).filter(id => id !== agent?.branch_id),
+    groups: (agent?.groups || []).join(', '),
   });
 
   const { data: branches = [] } = useQuery({
@@ -49,7 +50,11 @@ function AgentModal({ agent, onClose }) {
 
   const mutation = useMutation({
     mutationFn: (data) => {
-      const payload = { ...data, branch_ids: data.branch_ids.filter(id => id !== data.branch_id) };
+      const payload = {
+        ...data,
+        branch_ids: data.branch_ids.filter(id => id !== data.branch_id),
+        groups: data.groups.split(',').map(g => g.trim()).filter(Boolean),
+      };
       return isEdit ? api.put(`/agents/${agent.id}`, payload) : api.post('/agents', payload);
     },
     onSuccess: () => {
@@ -122,6 +127,11 @@ function AgentModal({ agent, onClose }) {
             <div className="col-span-2">
               <label className="label">Teléfono</label>
               <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
+            </div>
+            <div className="col-span-2">
+              <label className="label">Grupos/equipos (separados por coma)</label>
+              <input className="input" value={form.groups} onChange={e => set('groups', e.target.value)} placeholder="Soporte N1, Redes" />
+              <p className="text-xs text-gray-400 mt-1">Permite asignar tickets a un equipo completo desde Automatizaciones.</p>
             </div>
             {branches.filter(b => b.id !== form.branch_id).length > 0 && (
               <div className="col-span-2">

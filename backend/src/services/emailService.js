@@ -74,16 +74,13 @@ const emailService = {
    * Enviar enlace de restablecimiento de contraseña
    */
   async sendPasswordReset(user, resetUrl) {
+    const { renderTemplate } = require('./templateService');
+    const { subject, body } = await renderTemplate(user.company_id, 'password_reset', { name: user.name, reset_url: resetUrl });
     await this.sendRaw({
-      to:      user.email,
-      subject: 'Restablecer contraseña - HelpDesk',
-      html:    `
-        <h2>Restablecer contraseña</h2>
-        <p>Hola ${user.name},</p>
-        <p>Hacé clic en el enlace para restablecer tu contraseña:</p>
-        <p><a href="${resetUrl}">${resetUrl}</a></p>
-        <p>El enlace expira en 1 hora.</p>
-      `,
+      to: user.email,
+      companyId: user.company_id,
+      subject,
+      html: body,
     });
   },
 

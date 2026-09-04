@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet, Key, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet, Key, Eye, EyeOff, CalendarOff, FileText, RotateCcw } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
   { id: 'channels', label: 'Notificaciones', icon: Send },
   { id: 'scheduled-reports', label: 'Reportes programados', icon: FileSpreadsheet },
+  { id: 'templates', label: 'Plantillas', icon: FileText },
   { id: 'api', label: 'API', icon: Key },
 ];
 
@@ -112,6 +113,14 @@ function GeneralSettings() {
               ))}
             </select>
           </div>
+          <div className="col-span-2">
+            <label className="label">URL del logo</label>
+            <input className="input" value={form.logo_url || ''} onChange={e => set('logo_url', e.target.value)} placeholder="https://.../logo.png" />
+          </div>
+          <div className="col-span-2">
+            <label className="label">Dominio (para recibir emails / SSO)</label>
+            <input className="input" value={form.domain || ''} onChange={e => set('domain', e.target.value)} placeholder="empresa.com" />
+          </div>
         </div>
       </div>
 
@@ -155,7 +164,103 @@ function GeneralSettings() {
         <Save size={16} /> {mutation.isLoading ? 'Guardando...' : 'Guardar cambios'}
       </button>
 
+      <BusinessHoursCard />
+      <HolidaysCard />
       <MonitoringWebhookCard />
+    </div>
+  );
+}
+
+const WEEKDAYS = [
+  ['monday', 'Lunes'], ['tuesday', 'Martes'], ['wednesday', 'Miércoles'],
+  ['thursday', 'Jueves'], ['friday', 'Viernes'], ['saturday', 'Sábado'], ['sunday', 'Domingo'],
+];
+
+function BusinessHoursCard() {
+  const queryClient = useQueryClient();
+  const { data: hours, isLoading: loadingHours } = useQuery({
+    queryKey: ['business-hours-detail'],
+    queryFn: () => api.get('/settings/business-hours').then(r => r.data).catch(() => null),
+  });
+
+  const [form, setForm] = useState(null);
+  React.useEffect(() => { if (hours && !form) setForm(hours); }, [hours]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => api.put('/settings/business-hours', data),
+    onSuccess: () => { queryClient.invalidateQueries(['business-hours-detail']); toast.success('Horario guardado'); },
+  });
+
+  if (loadingHours || !form) return null;
+
+  const setDay = (day, patch) => setForm(f => ({ ...f, [day]: { ...f[day], ...patch } }));
+
+  return (
+    <div className="card p-6 space-y-4">
+      <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Clock size={16} /> Horario de atención</h2>
+      <p className="text-sm text-gray-500">Usado para el vencimiento de SLA en políticas marcadas "Solo horario laboral".</p>
+      <div className="space-y-2">
+        {WEEKDAYS.map(([key, label]) => (
+          <div key={key} className="flex items-center gap-3">
+            <label className="flex items-center gap-2 w-32 flex-shrink-0">
+              <input type="checkbox" checked={!!form[key]?.active} onChange={e => setDay(key, { active: e.target.checked })} className="rounded" />
+              <span className="text-sm text-gray-700">{label}</span>
+            </label>
+            <input type="time" className="input h-8 text-sm w-32" value={form[key]?.open || '09:00'} disabled={!form[key]?.active} onChange={e => setDay(key, { open: e.target.value })} />
+            <span className="text-xs text-gray-400">a</span>
+            <input type="time" className="input h-8 text-sm w-32" value={form[key]?.close || '18:00'} disabled={!form[key]?.active} onChange={e => setDay(key, { close: e.target.value })} />
+          </div>
+        ))}
+      </div>
+      <button onClick={() => mutation.mutate(form)} disabled={mutation.isLoading} className="btn-primary">
+        <Save size={14} /> {mutation.isLoading ? 'Guardando...' : 'Guardar horario'}
+      </button>
+    </div>
+  );
+}
+
+function HolidaysCard() {
+  const queryClient = useQueryClient();
+  const [newDate, setNewDate] = useState('');
+
+  const { data: holidays = [], isLoading } = useQuery({
+    queryKey: ['holidays'],
+    queryFn: () => api.get('/settings/holidays').then(r => r.data || []),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (list) => api.put('/settings/holidays', list),
+    onSuccess: () => queryClient.invalidateQueries(['holidays']),
+  });
+
+  const addHoliday = () => {
+    if (!newDate || holidays.includes(newDate)) return;
+    saveMutation.mutate([...holidays, newDate].sort());
+    setNewDate('');
+  };
+  const removeHoliday = (date) => saveMutation.mutate(holidays.filter(d => d !== date));
+
+  return (
+    <div className="card p-6 space-y-4">
+      <h2 className="font-semibold text-gray-900 flex items-center gap-2"><CalendarOff size={16} /> Feriados</h2>
+      <p className="text-sm text-gray-500">Días puntuales sin atención (además del horario semanal), para el cálculo de SLA.</p>
+      <div className="flex gap-2">
+        <input type="date" className="input w-auto" value={newDate} onChange={e => setNewDate(e.target.value)} />
+        <button onClick={addHoliday} disabled={!newDate} className="btn-ghost"><Plus size={14} /> Agregar</button>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Cargando...</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {holidays.map(date => (
+            <span key={date} className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">
+              {date}
+              <button onClick={() => removeHoliday(date)}><X size={11} className="text-gray-400 hover:text-red-500" /></button>
+            </span>
+          ))}
+          {holidays.length === 0 && <p className="text-sm text-gray-400">Sin feriados cargados</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -309,7 +414,8 @@ const CONDITION_OPERATORS = {
 const ACTION_TYPES = {
   assign_agent: 'Asignar agente', set_priority: 'Cambiar prioridad', set_status: 'Cambiar estado',
   set_category: 'Cambiar categoría', add_note: 'Agregar nota interna', notify_agent: 'Notificar a un agente',
-  send_email: 'Enviar email',
+  send_email: 'Enviar email', call_webhook: 'Llamar a una URL externa (webhook)',
+  assign_group: 'Asignar a un grupo/equipo',
 };
 
 function AutomationSettings() {
@@ -394,6 +500,7 @@ function AutomationSettings() {
 
 function defaultActionValue(type) {
   if (type === 'send_email') return { to: 'requester', subject: '', body: '' };
+  if (type === 'call_webhook') return { url: '' };
   return '';
 }
 
@@ -409,6 +516,7 @@ function AutomationModal({ rule, onClose }) {
     queryKey: ['categories-list'],
     queryFn: () => api.get('/categories').then(r => r.data || []),
   });
+  const availableGroups = [...new Set(agents.flatMap(a => a.groups || []))];
 
   const [form, setForm] = useState({
     name: rule?.name || '',
@@ -598,6 +706,22 @@ function AutomationModal({ rule, onClose }) {
                       )}
                       <input className={clsx('input text-sm h-8', a.value.to === 'specific' ? 'col-span-1' : 'col-span-2')} placeholder="Asunto" value={a.value.subject} onChange={e => updateAction(i, { value: { ...a.value, subject: e.target.value } })} />
                       <textarea className="input text-sm col-span-3" rows={2} placeholder="Cuerpo del mensaje" value={a.value.body} onChange={e => updateAction(i, { value: { ...a.value, body: e.target.value } })} />
+                    </div>
+                  )}
+                  {a.type === 'assign_group' && (
+                    availableGroups.length > 0 ? (
+                      <select className="input text-sm h-8" value={a.value} onChange={e => updateAction(i, { value: e.target.value })}>
+                        <option value="">Elegir grupo...</option>
+                        {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-xs text-amber-600">No hay grupos configurados todavía — asignale un grupo a algún agente en Agentes primero.</p>
+                    )
+                  )}
+                  {a.type === 'call_webhook' && (
+                    <div>
+                      <input className="input text-sm h-8" placeholder="https://tu-sistema.com/webhook" value={a.value.url || ''} onChange={e => updateAction(i, { value: { url: e.target.value } })} />
+                      <p className="text-xs text-gray-400 mt-1">Se manda un POST con JSON: evento, regla y datos básicos del ticket.</p>
                     </div>
                   )}
                 </div>
@@ -1101,13 +1225,104 @@ function ApiTokenSettings() {
   );
 }
 
+// ─── Plantillas de notificación ──────────────────────────────────────────────
+function TemplateModal({ template, onClose }) {
+  const queryClient = useQueryClient();
+  const [subject, setSubject] = useState(template.subject || '');
+  const [body, setBody] = useState(template.body || '');
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.put(`/notification-templates/${template.event}`, { subject, body }),
+    onSuccess: () => { queryClient.invalidateQueries(['notification-templates']); toast.success('Plantilla guardada'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => api.delete(`/notification-templates/${template.event}`),
+    onSuccess: () => { queryClient.invalidateQueries(['notification-templates']); toast.success('Restaurada por defecto'); onClose(); },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">{template.label}</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-gray-500">
+            Variables disponibles: {template.variables.map(v => <code key={v} className="bg-gray-50 px-1 rounded mr-1">{`{{${v}}}`}</code>)}
+          </p>
+          {template.channel === 'email' && (
+            <div>
+              <label className="label">Asunto</label>
+              <input className="input" value={subject} onChange={e => setSubject(e.target.value)} />
+            </div>
+          )}
+          <div>
+            <label className="label">{template.channel === 'email' ? 'Cuerpo (HTML)' : 'Texto'}</label>
+            <textarea className="input font-mono text-sm" rows={template.channel === 'email' ? 8 : 3} value={body} onChange={e => setBody(e.target.value)} />
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            {template.is_custom ? (
+              <button onClick={() => resetMutation.mutate()} disabled={resetMutation.isLoading} className="btn-ghost text-sm">
+                <RotateCcw size={14} /> Restaurar por defecto
+              </button>
+            ) : <span />}
+            <div className="flex gap-3">
+              <button onClick={onClose} className="btn-ghost">Cancelar</button>
+              <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isLoading || !body.trim()} className="btn-primary">
+                {saveMutation.isLoading ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplateSettings() {
+  const [modal, setModal] = useState(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ['notification-templates'],
+    queryFn: () => api.get('/notification-templates').then(r => r.data),
+  });
+
+  const templates = data?.templates || [];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-gray-500">
+        Personalizá el texto de los emails transaccionales y de los avisos que se mandan a Slack/Telegram. Lo que no edites usa el texto por defecto.
+      </p>
+      <div className="space-y-2">
+        {isLoading && <div className="text-center text-gray-400 py-6">Cargando...</div>}
+        {templates.map(t => (
+          <div key={t.event} className="card p-4 flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 flex items-center gap-2">
+                {t.label}
+                {t.is_custom && <span className="text-xs font-normal text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded">Personalizada</span>}
+              </p>
+              <p className="text-xs text-gray-400 capitalize">{t.channel === 'email' ? 'Email' : 'Slack / Telegram / notificación interna'}</p>
+            </div>
+            <button onClick={() => setModal(t)} className="btn-ghost p-2"><Pencil size={14} /></button>
+          </div>
+        ))}
+      </div>
+      {modal && <TemplateModal template={modal} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
   const ActiveTab = {
     general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings,
     channels: ChannelSettings, 'scheduled-reports': ScheduledReportSettings,
-    api: ApiTokenSettings,
+    api: ApiTokenSettings, templates: TemplateSettings,
   }[activeTab];
 
   return (

@@ -45,6 +45,10 @@ const Company = sequelize.define('Company', {
       sunday:    { open: '09:00', close: '13:00', active: false },
     },
   },
+  // Días puntuales sin atención (feriados), formato "YYYY-MM-DD". Se
+  // combina con business_hours para el cálculo de vencimiento de SLA
+  // cuando la política tiene business_hours_only=true.
+  holidays: { type: DataTypes.JSONB, defaultValue: [] },
   settings: {
     type: DataTypes.JSONB,
     defaultValue: {
