@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Filter, Search, ChevronDown, ChevronUp, RefreshCw, Trash2, CheckSquare } from 'lucide-react';
+import { Plus, Filter, Search, ChevronDown, ChevronUp, RefreshCw, Trash2, CheckSquare, Siren, Download } from 'lucide-react';
 import api from '../../api/axios';
 import { es } from 'date-fns/locale';
 import { safeFormat as format } from '../../utils/safeDate';
@@ -33,10 +33,49 @@ function Badge({ type, value, map, colorMap }) {
   );
 }
 
+function MajorIncidentModal({ ticketIds, onClose, onDone }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/problems/bulk-from-tickets', { ticket_ids: ticketIds, title, description }),
+    onSuccess: (res) => { toast.success('Incidente mayor declarado'); onDone(res.data); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Siren size={16} className="text-red-500" /> Declarar Incidente Mayor</h2>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }} className="p-6 space-y-4">
+          <p className="text-sm text-gray-500">Se va a crear un Problema marcado como incidente mayor y se van a vincular los {ticketIds.length} tickets seleccionados.</p>
+          <div>
+            <label className="label">Título *</label>
+            <input required className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Caída del servicio de correo" />
+          </div>
+          <div>
+            <label className="label">Impacto / descripción</label>
+            <textarea className="input" rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Usuarios y servicios afectados..." />
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+            <button type="submit" disabled={mutation.isLoading} className="btn-primary bg-red-600 hover:bg-red-700">
+              {mutation.isLoading ? 'Declarando...' : 'Declarar incidente mayor'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function TicketList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [showMajorIncident, setShowMajorIncident] = useState(false);
   const queryClient = useQueryClient();
 
   const filters = {
@@ -101,9 +140,22 @@ export default function TicketList() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Tickets</h1>
-        <Link to="/tickets/new" className="btn-primary">
-          <Plus size={16} /> Nuevo Ticket
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => api.get('/tickets/export', { params: { format: 'excel', ...Object.fromEntries(searchParams) }, responseType: 'blob' }).then(res => {
+              const url = window.URL.createObjectURL(new Blob([res.data]));
+              const a = document.createElement('a'); a.href = url; a.download = 'tickets.xlsx'; document.body.appendChild(a); a.click(); a.remove();
+              window.URL.revokeObjectURL(url);
+            })}
+            className="btn-ghost"
+          >
+            <Download size={16} /> Exportar
+          </button>
+          <Link to="/tickets/new" className="btn-primary">
+            <Plus size={16} /> Nuevo Ticket
+          </Link>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -209,6 +261,11 @@ export default function TicketList() {
                 {label}
               </button>
             ))}
+            {selected.length >= 2 && (
+              <button onClick={() => setShowMajorIncident(true)} className="btn-ghost h-7 text-xs text-red-600">
+                <Siren size={12} /> Declarar incidente mayor
+              </button>
+            )}
             <button
               onClick={() => bulkMutation.mutate({ ticket_ids: selected, action: 'spam' })}
               className="btn-danger h-7 text-xs"
@@ -380,6 +437,14 @@ export default function TicketList() {
           </div>
         )}
       </div>
+
+      {showMajorIncident && (
+        <MajorIncidentModal
+          ticketIds={selected}
+          onClose={() => setShowMajorIncident(false)}
+          onDone={() => { setShowMajorIncident(false); setSelected([]); queryClient.invalidateQueries(['tickets']); }}
+        />
+      )}
     </div>
   );
 }

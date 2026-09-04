@@ -64,6 +64,8 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
 
   // ITSM: problema al que pertenece este ticket (si es un incidente recurrente)
   problem_id: DataTypes.UUID,
+  // Catálogo de servicios: a qué servicio de TI corresponde este ticket
+  service_id: DataTypes.UUID,
 
   // Integración con monitoreo (Zabbix/PRTG): permite encontrar el ticket
   // correspondiente cuando llega el evento de "resuelto" de la misma alerta.
@@ -97,6 +99,7 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
     { fields: ['created_at'] },
     { fields: ['sla_status'] },
     { fields: ['problem_id'] },
+    { fields: ['service_id'] },
     { fields: ['external_source', 'external_alert_id'] },
     {
       name: 'tickets_search_idx',

@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { Star } from 'lucide-react';
+import { Star, Download } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import api from '../../api/axios';
@@ -14,6 +14,17 @@ const COLORS = ['#6366f1','#f59e0b','#10b981','#6b7280','#ef4444','#3b82f6'];
 const STATUS_LABELS = { open: 'Abiertos', pending: 'Pendientes', resolved: 'Resueltos', closed: 'Cerrados', waiting_customer: 'Esperando' };
 
 const TABS = ['Resumen', 'Por Período', 'Agentes', 'Por Categoría', 'SLA', 'Satisfacción'];
+const EXPORT_TYPE_BY_TAB = { 'Resumen': 'overview', 'Agentes': 'agent_performance', 'SLA': 'sla', 'Satisfacción': 'satisfaction' };
+
+function exportReport(type) {
+  api.get(`/reports/${type}/export`, { responseType: 'blob' }).then(res => {
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = url; a.download = `reporte-${type}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  });
+}
 
 export default function Reports() {
   const [tab, setTab] = useState('Resumen');
@@ -74,7 +85,14 @@ export default function Reports() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
+        {EXPORT_TYPE_BY_TAB[tab] && (
+          <button onClick={() => exportReport(EXPORT_TYPE_BY_TAB[tab])} className="btn-ghost text-sm">
+            <Download size={14} /> Exportar a Excel
+          </button>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">

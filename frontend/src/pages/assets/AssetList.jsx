@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Pencil, Trash2, X, Search, QrCode } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -226,7 +227,7 @@ export default function AssetList() {
               <tr key={a.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{a.asset_tag}</td>
                 <td className="px-4 py-3">
-                  <p className="font-medium text-gray-900">{a.name}</p>
+                  <Link to={`/assets/${a.id}`} className="font-medium text-gray-900 hover:text-primary-600">{a.name}</Link>
                   <p className="text-xs text-gray-400">{a.brand} {a.model}</p>
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-600">{TYPE_LABELS[a.type] || a.type}</td>
@@ -239,6 +240,9 @@ export default function AssetList() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
+                    <Link to={`/assets/${a.id}`} className="btn-ghost p-1.5">
+                      <QrCode size={14} />
+                    </Link>
                     <button onClick={() => setModal(a)} className="btn-ghost p-1.5">
                       <Pencil size={14} />
                     </button>

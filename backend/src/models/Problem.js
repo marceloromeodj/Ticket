@@ -25,6 +25,14 @@ module.exports = (sequelize) => sequelize.define('Problem', {
   category_id: DataTypes.UUID,
   agent_id:    DataTypes.UUID, // responsable del problema
 
+  // Major Incident Management: se marca cuando el problema se declaró a
+  // partir de una detección de incidentes masivos (o manualmente para un
+  // incidente de alto impacto), habilitando timeline/comunicación
+  // centralizada en la UI.
+  is_major:  { type: DataTypes.BOOLEAN, defaultValue: false },
+  impact:    DataTypes.TEXT, // usuarios/servicios afectados
+  postmortem: DataTypes.TEXT,
+
   resolved_at: DataTypes.DATE,
 }, {
   tableName: 'problems',

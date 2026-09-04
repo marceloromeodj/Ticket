@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -11,6 +11,8 @@ const TABS = [
   { id: 'sla', label: 'Políticas SLA', icon: Clock },
   { id: 'automation', label: 'Automatizaciones', icon: Zap },
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
+  { id: 'channels', label: 'Notificaciones', icon: Send },
+  { id: 'scheduled-reports', label: 'Reportes programados', icon: FileSpreadsheet },
 ];
 
 // ─── Webhook de monitoreo (Zabbix/PRTG) ──────────────────────────────────────
@@ -297,7 +299,7 @@ const AUTOMATION_EVENTS = {
   ticket_updated: 'Ticket actualizado',
   time_based:     'Basado en tiempo (revisión horaria)',
 };
-const CONDITION_FIELDS = ['status', 'priority', 'source', 'type', 'category_id', 'branch_id', 'subject', 'requester_email'];
+const CONDITION_FIELDS = ['status', 'priority', 'source', 'type', 'category_id', 'service_id', 'branch_id', 'subject', 'requester_email'];
 const CONDITION_OPERATORS = {
   is: 'es', is_not: 'no es', contains: 'contiene', not_contains: 'no contiene',
   in: 'está en (separado por comas)', not_in: 'no está en (separado por comas)',
@@ -798,10 +800,233 @@ function InboxModal({ inbox, onClose }) {
   );
 }
 
+// ─── Canales de notificación (Slack / Telegram) ──────────────────────────────
+function ChannelSettings() {
+  const queryClient = useQueryClient();
+  const [modal, setModal] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['notification-channels'],
+    queryFn: () => api.get('/notification-channels').then(r => r.data),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/notification-channels/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['notification-channels']); toast.success('Canal eliminado'); },
+  });
+  const testMutation = useMutation({
+    mutationFn: (id) => api.post(`/notification-channels/${id}/test`),
+    onSuccess: (res) => toast.success(res.data.message),
+    onError: e => toast.error(e.response?.data?.error || 'Error al enviar la prueba'),
+  });
+
+  const channels = data?.channels || [];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-gray-500">
+        Avisos a nivel empresa (no por agente individual) para tickets urgentes, incumplimiento de SLA e incidentes mayores.
+      </p>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({})} className="btn-primary"><Plus size={16} /> Nuevo canal</button>
+      </div>
+      <div className="space-y-3">
+        {isLoading && <div className="text-center text-gray-400 py-6">Cargando...</div>}
+        {!isLoading && channels.length === 0 && <div className="text-center text-gray-400 py-6">Sin canales configurados</div>}
+        {channels.map(c => (
+          <div key={c.id} className="card p-4 flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 capitalize">{c.type}</p>
+              <p className="text-xs text-gray-400">{(c.events || []).join(', ')}</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => testMutation.mutate(c.id)} className="btn-ghost h-8 text-xs">Probar</button>
+              <button onClick={() => { if (confirm('¿Eliminar canal?')) deleteMutation.mutate(c.id); }} className="btn-ghost p-2 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {modal !== null && <ChannelModal onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+function ChannelModal({ onClose }) {
+  const queryClient = useQueryClient();
+  const [type, setType] = useState('slack');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [botToken, setBotToken] = useState('');
+  const [chatId, setChatId] = useState('');
+  const [events, setEvents] = useState(['ticket_urgent', 'sla_breach', 'major_incident']);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/notification-channels', {
+      type,
+      config: type === 'slack' ? { webhook_url: webhookUrl } : { bot_token: botToken, chat_id: chatId },
+      events,
+    }),
+    onSuccess: () => { queryClient.invalidateQueries(['notification-channels']); toast.success('Canal creado'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const toggleEvent = (ev) => setEvents(es => es.includes(ev) ? es.filter(x => x !== ev) : [...es, ev]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Nuevo canal de notificación</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }} className="p-6 space-y-4">
+          <div>
+            <label className="label">Tipo</label>
+            <select className="input" value={type} onChange={e => setType(e.target.value)}>
+              <option value="slack">Slack</option>
+              <option value="telegram">Telegram</option>
+            </select>
+          </div>
+          {type === 'slack' ? (
+            <div>
+              <label className="label">Webhook URL</label>
+              <input required className="input" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.slack.com/services/..." />
+              <p className="text-xs text-gray-400 mt-1">Slack → Apps → Incoming Webhooks → crear uno para el canal deseado.</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="label">Bot Token</label>
+                <input required className="input" value={botToken} onChange={e => setBotToken(e.target.value)} placeholder="123456:ABC-DEF..." />
+                <p className="text-xs text-gray-400 mt-1">Creado con @BotFather en Telegram.</p>
+              </div>
+              <div>
+                <label className="label">Chat ID</label>
+                <input required className="input" value={chatId} onChange={e => setChatId(e.target.value)} placeholder="-100123456789" />
+                <p className="text-xs text-gray-400 mt-1">ID del grupo/canal donde el bot debe mandar los avisos.</p>
+              </div>
+            </>
+          )}
+          <div>
+            <label className="label">Eventos</label>
+            <div className="space-y-1">
+              {[['ticket_urgent', 'Ticket urgente creado'], ['sla_breach', 'SLA incumplido'], ['major_incident', 'Incidente masivo / mayor']].map(([k, l]) => (
+                <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" className="rounded" checked={events.includes(k)} onChange={() => toggleEvent(k)} />
+                  {l}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+            <button type="submit" disabled={mutation.isLoading} className="btn-primary">{mutation.isLoading ? 'Guardando...' : 'Guardar'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reportes programados ─────────────────────────────────────────────────────
+const REPORT_TYPE_LABELS = { overview: 'Resumen general', agent_performance: 'Performance de agentes', sla: 'SLA', satisfaction: 'Satisfacción (CSAT)' };
+const FREQUENCY_LABELS = { daily: 'Diario', weekly: 'Semanal', monthly: 'Mensual' };
+
+function ScheduledReportSettings() {
+  const queryClient = useQueryClient();
+  const [modal, setModal] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['scheduled-reports'],
+    queryFn: () => api.get('/scheduled-reports').then(r => r.data),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/scheduled-reports/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['scheduled-reports']); toast.success('Eliminado'); },
+  });
+
+  const reports = data?.reports || [];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-gray-500">Se revisan todos los días a las 7am y se mandan por email si corresponde según la frecuencia.</p>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({})} className="btn-primary"><Plus size={16} /> Nuevo reporte programado</button>
+      </div>
+      <div className="space-y-3">
+        {isLoading && <div className="text-center text-gray-400 py-6">Cargando...</div>}
+        {!isLoading && reports.length === 0 && <div className="text-center text-gray-400 py-6">Sin reportes programados</div>}
+        {reports.map(r => (
+          <div key={r.id} className="card p-4 flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900">{REPORT_TYPE_LABELS[r.report_type]} — {FREQUENCY_LABELS[r.frequency]}</p>
+              <p className="text-xs text-gray-400">{(r.recipients || []).join(', ')}</p>
+            </div>
+            <button onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(r.id); }} className="btn-ghost p-2 text-red-400"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      {modal !== null && <ScheduledReportModal onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+function ScheduledReportModal({ onClose }) {
+  const queryClient = useQueryClient();
+  const [reportType, setReportType] = useState('overview');
+  const [frequency, setFrequency] = useState('weekly');
+  const [recipients, setRecipients] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/scheduled-reports', {
+      report_type: reportType, frequency,
+      recipients: recipients.split(',').map(e => e.trim()).filter(Boolean),
+    }),
+    onSuccess: () => { queryClient.invalidateQueries(['scheduled-reports']); toast.success('Creado'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Nuevo reporte programado</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }} className="p-6 space-y-4">
+          <div>
+            <label className="label">Reporte</label>
+            <select className="input" value={reportType} onChange={e => setReportType(e.target.value)}>
+              {Object.entries(REPORT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Frecuencia</label>
+            <select className="input" value={frequency} onChange={e => setFrequency(e.target.value)}>
+              {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Destinatarios (separados por coma)</label>
+            <input required className="input" value={recipients} onChange={e => setRecipients(e.target.value)} placeholder="jefe@empresa.com, gerencia@empresa.com" />
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+            <button type="submit" disabled={mutation.isLoading} className="btn-primary">{mutation.isLoading ? 'Guardando...' : 'Guardar'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
-  const ActiveTab = { general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings }[activeTab];
+  const ActiveTab = {
+    general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings,
+    channels: ChannelSettings, 'scheduled-reports': ScheduledReportSettings,
+  }[activeTab];
 
   return (
     <div className="space-y-5">

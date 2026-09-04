@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import {
   LayoutDashboard, Ticket, Users, Building2, GitBranch,
   BarChart2, BookOpen, Settings, ChevronLeft, ChevronRight,
-  Database, AlertOctagon, GitPullRequest, ShieldCheck, LogOut,
+  Database, AlertOctagon, GitPullRequest, ShieldCheck, LayoutGrid, LogOut,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/tickets',   label: 'Tickets',          icon: Ticket },
   { to: '/knowledge', label: 'Base de Conocimiento', icon: BookOpen },
   { type: 'divider' },
+  { to: '/services',  label: 'Catálogo de servicios', icon: LayoutGrid, roles: ['super_admin','admin','supervisor'] },
   { to: '/assets',    label: 'Activos (CMDB)',   icon: Database,      roles: ['super_admin','admin','supervisor','agent'] },
   { to: '/problems',  label: 'Problemas',        icon: AlertOctagon,  roles: ['super_admin','admin','supervisor','agent'] },
   { to: '/changes',   label: 'Cambios (RFC)',    icon: GitPullRequest, roles: ['super_admin','admin','supervisor','agent'] },

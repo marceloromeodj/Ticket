@@ -1,0 +1,225 @@
+import React, { useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { QRCodeSVG } from 'qrcode.react';
+import { ArrowLeft, Plus, X, Check, Printer, Wrench } from 'lucide-react';
+import api from '../../api/axios';
+import toast from 'react-hot-toast';
+import { safeFormat as format } from '../../utils/safeDate';
+import { clsx } from 'clsx';
+
+const TYPE_LABELS = {
+  pc: 'PC', notebook: 'Notebook', server: 'Servidor', vm: 'Máquina virtual',
+  printer: 'Impresora', switch: 'Switch', router: 'Router', firewall: 'Firewall',
+  ap: 'Access Point', ups: 'UPS', camera: 'Cámara', phone: 'Teléfono', other: 'Otro',
+};
+
+function PlanModal({ assetId, onClose }) {
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [frequencyDays, setFrequencyDays] = useState(90);
+  const [checklist, setChecklist] = useState(['']);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/maintenance/plans', {
+      asset_id: assetId, title, frequency_days: frequencyDays,
+      checklist: checklist.filter(Boolean),
+    }),
+    onSuccess: () => { queryClient.invalidateQueries(['maintenance-plans', assetId]); toast.success('Plan creado'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Nuevo plan de mantenimiento</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }} className="p-6 space-y-4">
+          <div>
+            <label className="label">Título *</label>
+            <input required className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Limpieza y revisión trimestral" />
+          </div>
+          <div>
+            <label className="label">Frecuencia (días)</label>
+            <input type="number" min={1} className="input" value={frequencyDays} onChange={e => setFrequencyDays(parseInt(e.target.value) || 90)} />
+          </div>
+          <div>
+            <label className="label">Checklist</label>
+            {checklist.map((item, i) => (
+              <div key={i} className="flex gap-2 mb-2">
+                <input
+                  className="input text-sm"
+                  value={item}
+                  onChange={e => setChecklist(c => c.map((x, idx) => idx === i ? e.target.value : x))}
+                  placeholder={`Ítem ${i + 1}`}
+                />
+                <button type="button" onClick={() => setChecklist(c => c.filter((_, idx) => idx !== i))} className="btn-ghost p-1.5 text-red-400"><X size={14} /></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setChecklist(c => [...c, ''])} className="text-xs text-primary-600 hover:underline">+ Agregar ítem</button>
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+            <button type="submit" disabled={mutation.isLoading} className="btn-primary">{mutation.isLoading ? 'Guardando...' : 'Guardar'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CompleteModal({ plan, onClose }) {
+  const queryClient = useQueryClient();
+  const [results, setResults] = useState((plan.checklist || []).map(item => ({ item, checked: false, note: '' })));
+  const [notes, setNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/maintenance/plans/${plan.id}/complete`, { checklist_results: results, notes }),
+    onSuccess: () => { queryClient.invalidateQueries(['maintenance-plans']); toast.success('Mantenimiento registrado'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Registrar mantenimiento — {plan.title}</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <div className="p-6 space-y-3">
+          {results.map((r, i) => (
+            <label key={i} className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded"
+                checked={r.checked}
+                onChange={e => setResults(rs => rs.map((x, idx) => idx === i ? { ...x, checked: e.target.checked } : x))}
+              />
+              {r.item}
+            </label>
+          ))}
+          {results.length === 0 && <p className="text-sm text-gray-400">Este plan no tiene checklist, solo se registra la fecha.</p>}
+          <textarea className="input text-sm" rows={2} placeholder="Notas (opcional)" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+        <div className="flex gap-3 justify-end px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="btn-ghost">Cancelar</button>
+          <button onClick={() => mutation.mutate()} disabled={mutation.isLoading} className="btn-primary">
+            <Check size={14} /> {mutation.isLoading ? 'Guardando...' : 'Confirmar realizado'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AssetDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [completingPlan, setCompletingPlan] = useState(null);
+
+  const { data: asset, isLoading } = useQuery({
+    queryKey: ['asset', id],
+    queryFn: () => api.get(`/assets/${id}`).then(r => r.data),
+  });
+
+  const { data: plansData } = useQuery({
+    queryKey: ['maintenance-plans', id],
+    queryFn: () => api.get('/maintenance/plans', { params: { asset_id: id } }).then(r => r.data),
+  });
+  const plans = plansData?.plans || [];
+
+  const qrUrl = `${window.location.origin}/assets/${id}`;
+
+  if (isLoading) return <div className="text-center text-gray-400 py-16">Cargando...</div>;
+  if (!asset) return <div className="text-center text-gray-500 py-16">Activo no encontrado</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center gap-3">
+        <button onClick={() => navigate('/assets')} className="btn-ghost p-2"><ArrowLeft size={16} /></button>
+        <div>
+          <p className="text-xs text-gray-400 font-mono">{asset.asset_tag}</p>
+          <h1 className="text-2xl font-bold text-gray-900">{asset.name}</h1>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="card p-5 col-span-2 space-y-3">
+          <h2 className="font-semibold text-gray-900">Información</h2>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div><span className="text-gray-500">Tipo</span><p className="font-medium">{TYPE_LABELS[asset.type] || asset.type}</p></div>
+            <div><span className="text-gray-500">Estado</span><p className="font-medium capitalize">{asset.status}</p></div>
+            <div><span className="text-gray-500">Marca / Modelo</span><p className="font-medium">{asset.brand} {asset.model}</p></div>
+            <div><span className="text-gray-500">Nº de serie</span><p className="font-medium">{asset.serial_number || '—'}</p></div>
+            <div><span className="text-gray-500">IP / MAC</span><p className="font-medium">{asset.ip_address || '—'} {asset.mac_address ? `/ ${asset.mac_address}` : ''}</p></div>
+            <div><span className="text-gray-500">Sucursal</span><p className="font-medium">{asset.branch?.name || '—'}</p></div>
+            <div><span className="text-gray-500">Asignado a</span><p className="font-medium">{asset.owner?.name || '—'}</p></div>
+            <div><span className="text-gray-500">Ubicación</span><p className="font-medium">{asset.location || '—'}</p></div>
+            <div><span className="text-gray-500">Garantía hasta</span><p className="font-medium">{asset.warranty_until ? format(asset.warranty_until, 'd MMM yyyy') : '—'}</p></div>
+          </div>
+          {asset.notes && <p className="text-sm text-gray-600 border-t border-gray-100 pt-3">{asset.notes}</p>}
+        </div>
+
+        <div className="card p-5 flex flex-col items-center text-center">
+          <h2 className="font-semibold text-gray-900 mb-3 self-start">Código QR</h2>
+          <div className="bg-white p-3 border border-gray-100 rounded-lg print:border-0">
+            <QRCodeSVG value={qrUrl} size={140} />
+          </div>
+          <p className="text-xs text-gray-400 mt-2 break-all">{qrUrl}</p>
+          <button onClick={() => window.print()} className="btn-ghost h-8 text-xs mt-3">
+            <Printer size={12} /> Imprimir para pegar en el equipo
+          </button>
+        </div>
+      </div>
+
+      {/* Mantenimiento preventivo */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Wrench size={16} /> Mantenimiento preventivo</h2>
+          <button onClick={() => setShowPlanModal(true)} className="btn-ghost h-8 text-xs"><Plus size={12} /> Nuevo plan</button>
+        </div>
+        {plans.length === 0 && <p className="text-sm text-gray-400 py-4 text-center">Sin planes de mantenimiento configurados</p>}
+        <div className="space-y-3">
+          {plans.map(plan => {
+            const overdue = plan.next_due_at && new Date(plan.next_due_at) < new Date();
+            return (
+              <div key={plan.id} className="border border-gray-100 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">{plan.title}</p>
+                  <p className={clsx('text-xs mt-0.5', overdue ? 'text-red-600 font-medium' : 'text-gray-500')}>
+                    Próximo: {plan.next_due_at ? format(plan.next_due_at, "d MMM yyyy") : '—'} {overdue && '(vencido)'}
+                    {plan.last_done_at && ` · Último: ${format(plan.last_done_at, 'd MMM yyyy')}`}
+                  </p>
+                </div>
+                <button onClick={() => setCompletingPlan(plan)} className="btn-primary h-8 text-xs">
+                  <Check size={12} /> Registrar realizado
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tickets relacionados */}
+      {asset.tickets?.length > 0 && (
+        <div className="card p-5">
+          <h2 className="font-semibold text-gray-900 mb-3">Tickets relacionados</h2>
+          <div className="space-y-2">
+            {asset.tickets.map(t => (
+              <Link key={t.id} to={`/tickets/${t.id}`} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 text-sm">
+                <span>#{t.ticket_number} — {t.subject}</span>
+                <span className="badge badge-pending text-xs">{t.status}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showPlanModal && <PlanModal assetId={id} onClose={() => setShowPlanModal(false)} />}
+      {completingPlan && <CompleteModal plan={completingPlan} onClose={() => setCompletingPlan(null)} />}
+    </div>
+  );
+}

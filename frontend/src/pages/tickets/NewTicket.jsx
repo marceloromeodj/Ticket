@@ -10,7 +10,7 @@ export default function NewTicket() {
   const [form, setForm] = useState({
     subject: '', description: '', priority: 'medium', type: 'question',
     requester_name: '', requester_email: '', requester_phone: '',
-    category_id: '', agent_id: '', source: 'web',
+    category_id: '', agent_id: '', service_id: '', source: 'web',
   });
   const [files, setFiles] = useState([]);
 
@@ -22,6 +22,11 @@ export default function NewTicket() {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get('/categories').then(r => r.data || []),
+  });
+
+  const { data: services = [] } = useQuery({
+    queryKey: ['services'],
+    queryFn: () => api.get('/services').then(r => r.data?.services || []),
   });
 
   const createMutation = useMutation({
@@ -114,6 +119,13 @@ export default function NewTicket() {
               <select className="input" value={form.category_id} onChange={e => set('category_id', e.target.value)}>
                 <option value="">Sin categoría</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Servicio</label>
+              <select className="input" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
+                <option value="">Sin servicio</option>
+                {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>

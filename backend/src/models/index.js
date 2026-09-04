@@ -27,6 +27,11 @@ const Problem          = require('./Problem')(sequelize);
 const ChangeRequest    = require('./ChangeRequest')(sequelize);
 const TicketSurvey     = require('./TicketSurvey')(sequelize);
 const AuditLog         = require('./AuditLog')(sequelize);
+const Service          = require('./Service')(sequelize);
+const MaintenancePlan  = require('./MaintenancePlan')(sequelize);
+const MaintenanceLog   = require('./MaintenanceLog')(sequelize);
+const NotificationChannel = require('./NotificationChannel')(sequelize);
+const ScheduledReport  = require('./ScheduledReport')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -163,6 +168,28 @@ TicketSurvey.belongsTo(Company,  { foreignKey: 'company_id', as: 'company' });
 AuditLog.belongsTo(User,    { foreignKey: 'user_id',    as: 'user' });
 AuditLog.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
+// ─── Service (catálogo de servicios) ─────────────────────────────
+Company.hasMany(Service, { foreignKey: 'company_id', as: 'services' });
+Service.belongsTo(Company,   { foreignKey: 'company_id',  as: 'company' });
+Service.belongsTo(User,      { foreignKey: 'owner_id',    as: 'owner' });
+Service.belongsTo(SLAPolicy, { foreignKey: 'sla_policy_id', as: 'slaPolicy' });
+Service.hasMany(Ticket,      { foreignKey: 'service_id',  as: 'tickets' });
+Ticket.belongsTo(Service,    { foreignKey: 'service_id',  as: 'service' });
+
+// ─── Mantenimiento preventivo ─────────────────────────────────────
+Asset.hasMany(MaintenancePlan,      { foreignKey: 'asset_id', as: 'maintenancePlans' });
+MaintenancePlan.belongsTo(Asset,    { foreignKey: 'asset_id', as: 'asset' });
+MaintenancePlan.hasMany(MaintenanceLog, { foreignKey: 'plan_id', as: 'logs' });
+MaintenanceLog.belongsTo(MaintenancePlan, { foreignKey: 'plan_id', as: 'plan' });
+MaintenanceLog.belongsTo(Asset,     { foreignKey: 'asset_id', as: 'asset' });
+MaintenanceLog.belongsTo(User,      { foreignKey: 'done_by',  as: 'technician' });
+
+// ─── Notificaciones multi-canal y reportes programados ────────────
+Company.hasMany(NotificationChannel, { foreignKey: 'company_id', as: 'notificationChannels' });
+NotificationChannel.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+Company.hasMany(ScheduledReport, { foreignKey: 'company_id', as: 'scheduledReports' });
+ScheduledReport.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
 // ─── Normalización de UUIDs vacíos ─────────────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
 // "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
@@ -175,6 +202,7 @@ const allModels = [
   Tag, TicketTag, SLAPolicy, AutomationRule, KnowledgeArticle, CannedResponse,
   Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
   Asset, TicketAsset, Problem, ChangeRequest, TicketSurvey, AuditLog,
+  Service, MaintenancePlan, MaintenanceLog, NotificationChannel, ScheduledReport,
 ];
 allModels.forEach((model) => {
   const uuidAttrs = Object.entries(model.rawAttributes)
@@ -216,4 +244,9 @@ module.exports = {
   ChangeRequest,
   TicketSurvey,
   AuditLog,
+  Service,
+  MaintenancePlan,
+  MaintenanceLog,
+  NotificationChannel,
+  ScheduledReport,
 };

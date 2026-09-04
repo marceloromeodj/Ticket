@@ -53,18 +53,36 @@ const slaService = {
   async updateSLAStatuses() {
     const now = new Date();
 
-    // Breached: pasó la fecha límite de resolución y no está resuelto
-    await Ticket.update(
-      { sla_status: 'breached' },
-      {
-        where: {
-          status:             { [Op.notIn]: ['resolved', 'closed'] },
-          resolution_due_at:  { [Op.lt]: now },
-          sla_policy_id:      { [Op.ne]: null },
-          sla_status:         { [Op.ne]: 'breached' },
-        },
+    // Breached: pasó la fecha límite de resolución y no está resuelto.
+    // Se buscan primero (en vez de un UPDATE directo) para poder avisar
+    // por los canales de notificación configurados de cada empresa.
+    const toBreach = await Ticket.findAll({
+      where: {
+        status:             { [Op.notIn]: ['resolved', 'closed'] },
+        resolution_due_at:  { [Op.lt]: now },
+        sla_policy_id:      { [Op.ne]: null },
+        sla_status:         { [Op.ne]: 'breached' },
+      },
+      attributes: ['id', 'company_id', 'ticket_number', 'subject'],
+    });
+
+    if (toBreach.length > 0) {
+      await Ticket.update(
+        { sla_status: 'breached' },
+        { where: { id: { [Op.in]: toBreach.map(t => t.id) } } }
+      );
+
+      const { notificationChannelService } = require('./notificationChannelService');
+      const byCompany = {};
+      toBreach.forEach(t => { (byCompany[t.company_id] = byCompany[t.company_id] || []).push(t); });
+      for (const [companyId, tickets] of Object.entries(byCompany)) {
+        const list = tickets.slice(0, 5).map(t => `#${t.ticket_number} (${t.subject})`).join(', ');
+        notificationChannelService.broadcast(
+          companyId, 'sla_breach',
+          `⏰ SLA incumplido en ${tickets.length} ticket(s): ${list}`
+        ).catch(err => console.error('[SLA] Error notificando canales:', err.message));
       }
-    );
+    }
 
     // Warning: dentro de 30 minutos del vencimiento
     const warningThreshold = moment().add(30, 'minutes').toDate();

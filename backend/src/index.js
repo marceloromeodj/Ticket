@@ -41,6 +41,10 @@ const assetRoutes      = require('./routes/assets');
 const problemRoutes    = require('./routes/problems');
 const changeRoutes     = require('./routes/changes');
 const auditRoutes      = require('./routes/audit');
+const serviceRoutes    = require('./routes/services');
+const maintenanceRoutes = require('./routes/maintenance');
+const notificationChannelRoutes = require('./routes/notificationChannels');
+const scheduledReportRoutes = require('./routes/scheduledReports');
 
 const app    = express();
 const server = http.createServer(app);
@@ -126,6 +130,10 @@ app.use(`${api}/assets`,       assetRoutes);
 app.use(`${api}/problems`,     problemRoutes);
 app.use(`${api}/changes`,      changeRoutes);
 app.use(`${api}/audit`,        auditRoutes);
+app.use(`${api}/services`,     serviceRoutes);
+app.use(`${api}/maintenance`,  maintenanceRoutes);
+app.use(`${api}/notification-channels`, notificationChannelRoutes);
+app.use(`${api}/scheduled-reports`, scheduledReportRoutes);
 
 // WhatsApp & Email webhooks (fuera del prefijo /api)
 app.use('/webhook', webhookRoutes);

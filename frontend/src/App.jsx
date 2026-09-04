@@ -19,6 +19,8 @@ import Settings      from './pages/settings/Settings';
 import CustomerPortal from './pages/portal/CustomerPortal';
 import SurveyPage    from './pages/portal/SurveyPage';
 import AssetList     from './pages/assets/AssetList';
+import AssetDetail   from './pages/assets/AssetDetail';
+import ServiceList   from './pages/services/ServiceList';
 import ProblemList   from './pages/problems/ProblemList';
 import ChangeList    from './pages/changes/ChangeList';
 import AuditLogPage  from './pages/audit/AuditLogPage';
@@ -61,6 +63,8 @@ export default function App() {
           <Route path="knowledge/*"   element={<KnowledgeBase />} />
           <Route path="settings/*"    element={<PrivateRoute roles={['super_admin','admin']}><Settings /></PrivateRoute>} />
           <Route path="assets"        element={<AssetList />} />
+          <Route path="assets/:id"    element={<AssetDetail />} />
+          <Route path="services"      element={<ServiceList />} />
           <Route path="problems"      element={<ProblemList />} />
           <Route path="changes"       element={<ChangeList />} />
           <Route path="audit"         element={<PrivateRoute roles={['super_admin','admin']}><AuditLogPage /></PrivateRoute>} />

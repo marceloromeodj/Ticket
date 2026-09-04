@@ -6,6 +6,7 @@ const { upload, verifyFileSignatures } = require('../middleware/upload');
 router.use(authenticate, tenantMiddleware);
 
 router.get   ('/',        ctrl.list);
+router.get   ('/export',  ctrl.exportTickets);
 router.post  ('/',        requireCompanySelected, ctrl.create);
 router.post  ('/bulk',    requireCompanySelected, ctrl.bulkUpdate);
 router.get   ('/:id',     ctrl.getOne);

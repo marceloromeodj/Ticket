@@ -446,6 +446,12 @@ export default function TicketDetail() {
                   <span className="font-medium">{ticket.category.name}</span>
                 </div>
               )}
+              {ticket.service && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Servicio</span>
+                  <span className="font-medium">{ticket.service.name}</span>
+                </div>
+              )}
               {ticket.branch && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">Sucursal</span>

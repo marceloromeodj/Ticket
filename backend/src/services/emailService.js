@@ -51,7 +51,7 @@ const emailService = {
   /**
    * Enviar notificación genérica
    */
-  async sendRaw({ to, subject, html, text, companyId }) {
+  async sendRaw({ to, subject, html, text, companyId, attachments }) {
     // Si se pasa companyId, usa una bandeja de esa empresa; si no, la
     // primera activa que encuentre (compatibilidad con llamadas previas
     // sin contexto de empresa, ej. reset de contraseña).
@@ -65,6 +65,7 @@ const emailService = {
       subject,
       html,
       text,
+      attachments, // [{ filename, content: Buffer }]
     });
   },
 

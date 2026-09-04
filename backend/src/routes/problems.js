@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const { Op } = require('sequelize');
 const { sequelize, Problem, Ticket, User, Category } = require('../models');
 const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
 const { getNextSequentialNumber } = require('../utils/sequentialNumber');
@@ -40,6 +41,45 @@ router.post('/', requireCompanySelected, async (req, res, next) => {
 
     await t.commit();
     await logAudit(req, { action: 'create', entity_type: 'Problem', entity_id: problem.id, after: problem.toJSON() });
+
+    const fullProblem = await Problem.findByPk(problem.id, { include: includeRefs });
+    res.status(201).json(fullProblem);
+  } catch (err) {
+    await t.rollback();
+    next(err);
+  }
+});
+
+// Declarar Incidente Mayor a partir de una selección de tickets (ej. tras
+// una alerta de incidente masivo): crea el Problema marcado is_major y
+// vincula todos los tickets pasados de una sola vez.
+router.post('/bulk-from-tickets', requireCompanySelected, authorize('super_admin', 'admin', 'supervisor'), async (req, res, next) => {
+  const t = await sequelize.transaction();
+  try {
+    const { ticket_ids, title, description, impact } = req.body;
+    if (!Array.isArray(ticket_ids) || ticket_ids.length === 0) {
+      await t.rollback();
+      return res.status(400).json({ error: 'ticket_ids requerido' });
+    }
+    if (!title) {
+      await t.rollback();
+      return res.status(400).json({ error: 'title requerido' });
+    }
+
+    const problem_number = await getNextSequentialNumber(Problem, 'problem_number', req.companyId, t);
+    const problem = await Problem.create({
+      company_id: req.companyId, branch_id: req.branchId,
+      problem_number, title, description, impact,
+      priority: 'urgent', is_major: true, agent_id: req.user.id,
+    }, { transaction: t });
+
+    await Ticket.update(
+      { problem_id: problem.id },
+      { where: { id: { [Op.in]: ticket_ids }, ...companyScope(req) }, transaction: t }
+    );
+
+    await t.commit();
+    await logAudit(req, { action: 'create', entity_type: 'Problem', entity_id: problem.id, after: { is_major: true, ticket_ids } });
 
     const fullProblem = await Problem.findByPk(problem.id, { include: includeRefs });
     res.status(201).json(fullProblem);

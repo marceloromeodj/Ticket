@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { sequelize, Ticket, TicketMessage, TicketAttachment, User, Category, Tag, SLAPolicy, Notification, Asset, Problem } = require('../models');
+const { sequelize, Ticket, TicketMessage, TicketAttachment, User, Category, Tag, SLAPolicy, Notification, Asset, Problem, Service } = require('../models');
 const { emitToCompany, emitToTicket, emitToUser } = require('../config/socket');
 const { slaService }         = require('../services/slaService');
 const { automationService }  = require('../services/automationService');
@@ -9,6 +9,8 @@ const { getNextTicketNumber } = require('../utils/ticketNumber');
 const { companyScope }       = require('../middleware/auth');
 const { logAudit }           = require('../utils/audit');
 const { surveyService }      = require('../services/surveyService');
+const { notificationChannelService } = require('../services/notificationChannelService');
+const { massIncidentService } = require('../services/massIncidentService');
 
 // Reemplaza la URL pública guardada por una URL firmada de corta duración,
 // generada recién ahora que ya se validó que el usuario tiene acceso al
@@ -43,51 +45,48 @@ async function isAgentInCompany(agentId, companyId) {
   return !!agent;
 }
 
+// Filtros compartidos entre list() y exportTickets() -- se separó para que
+// el export no se desalinee con la lista si mañana se agrega un filtro.
+function buildTicketWhere(req) {
+  const { status, priority, type, agent_id, category_id, source, search, branch_id, from_date, to_date, sla_status } = req.query;
+
+  const where = { ...companyScope(req) };
+
+  if (req.user.role === 'agent' && req.branchIds?.length) {
+    where.branch_id = { [Op.in]: req.branchIds };
+  } else if (branch_id) {
+    where.branch_id = branch_id;
+  }
+
+  if (status)      where.status      = status.includes(',') ? { [Op.in]: status.split(',') } : status;
+  if (priority)    where.priority    = priority.includes(',') ? { [Op.in]: priority.split(',') } : priority;
+  if (type)        where.type        = type.includes(',') ? { [Op.in]: type.split(',') } : type;
+  if (agent_id)    where.agent_id    = agent_id === 'me' ? req.user.id : agent_id;
+  if (category_id) where.category_id = category_id;
+  if (source)      where.source      = source;
+  if (sla_status)  where.sla_status  = sla_status;
+  if (from_date)   where.created_at  = { ...where.created_at, [Op.gte]: new Date(from_date) };
+  if (to_date)     where.created_at  = { ...where.created_at, [Op.lte]: new Date(to_date) };
+  where.spam     = false;
+  where.archived = false;
+
+  if (search) {
+    where[Op.or] = [
+      { subject:          { [Op.iLike]: `%${search}%` } },
+      { requester_email:  { [Op.iLike]: `%${search}%` } },
+      { requester_name:   { [Op.iLike]: `%${search}%` } },
+      { '$ticket_number$': isNaN(search) ? undefined : parseInt(search) },
+    ].filter(Boolean);
+  }
+
+  return where;
+}
+
 // ─── Listar tickets ──────────────────────────────────────────────
 async function list(req, res, next) {
   try {
-    const {
-      status, priority, type, agent_id, category_id, source,
-      search, page = 1, limit = 25,
-      sort_by = 'created_at', sort_dir = 'DESC',
-      branch_id, from_date, to_date, sla_status, tag_id,
-    } = req.query;
-
-    // Solo un super_admin sin empresa seleccionada ve tickets de todas las
-    // empresas; cualquier otro rol sin company_id no debe recibir
-    // resultados (ver companyScope en middleware/auth.js).
-    const where = { ...companyScope(req) };
-
-    // Filtros de sucursal (un agente ve tickets de todas las sucursales a
-    // las que pertenece, no solo la principal; ver req.branchIds en
-    // middleware/auth.js)
-    if (req.user.role === 'agent' && req.branchIds?.length) {
-      where.branch_id = { [Op.in]: req.branchIds };
-    } else if (branch_id) {
-      where.branch_id = branch_id;
-    }
-
-    if (status)      where.status      = status.includes(',') ? { [Op.in]: status.split(',') } : status;
-    if (priority)    where.priority    = priority.includes(',') ? { [Op.in]: priority.split(',') } : priority;
-    if (type)        where.type        = type.includes(',') ? { [Op.in]: type.split(',') } : type;
-    if (agent_id)    where.agent_id    = agent_id === 'me' ? req.user.id : agent_id;
-    if (category_id) where.category_id = category_id;
-    if (source)      where.source      = source;
-    if (sla_status)  where.sla_status  = sla_status;
-    if (from_date)   where.created_at  = { ...where.created_at, [Op.gte]: new Date(from_date) };
-    if (to_date)     where.created_at  = { ...where.created_at, [Op.lte]: new Date(to_date) };
-    where.spam    = false;
-    where.archived = false;
-
-    if (search) {
-      where[Op.or] = [
-        { subject:          { [Op.iLike]: `%${search}%` } },
-        { requester_email:  { [Op.iLike]: `%${search}%` } },
-        { requester_name:   { [Op.iLike]: `%${search}%` } },
-        { '$ticket_number$': isNaN(search) ? undefined : parseInt(search) },
-      ].filter(Boolean);
-    }
-
+    const { page = 1, limit = 25, sort_by = 'created_at', sort_dir = 'DESC' } = req.query;
+    const where = buildTicketWhere(req);
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const { count, rows } = await Ticket.findAndCountAll({
@@ -111,6 +110,65 @@ async function list(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ─── Exportar tickets (CSV/Excel) ─────────────────────────────────
+async function exportTickets(req, res, next) {
+  try {
+    const where = buildTicketWhere(req);
+    const format = req.query.format === 'csv' ? 'csv' : 'excel';
+
+    const tickets = await Ticket.findAll({
+      where,
+      include: [
+        { model: User,     as: 'agent',     attributes: ['name'], required: false },
+        { model: User,     as: 'requester', attributes: ['name', 'email'], required: false },
+        { model: Category, as: 'category',  attributes: ['name'], required: false },
+      ],
+      order: [['created_at', 'DESC']],
+      limit: 5000,
+    });
+
+    const columns = [
+      { header: 'Número', key: 'ticket_number', width: 10 },
+      { header: 'Asunto', key: 'subject', width: 40 },
+      { header: 'Estado', key: 'status', width: 14 },
+      { header: 'Prioridad', key: 'priority', width: 12 },
+      { header: 'Tipo', key: 'type', width: 14 },
+      { header: 'Categoría', key: 'category', width: 18 },
+      { header: 'Agente', key: 'agent', width: 20 },
+      { header: 'Solicitante', key: 'requester', width: 20 },
+      { header: 'Email solicitante', key: 'requester_email', width: 26 },
+      { header: 'Creado', key: 'created_at', width: 20 },
+      { header: 'SLA', key: 'sla_status', width: 12 },
+    ];
+    const rows = tickets.map(t => ({
+      ticket_number: t.ticket_number,
+      subject: t.subject,
+      status: t.status,
+      priority: t.priority,
+      type: t.type,
+      category: t.category?.name || '',
+      agent: t.agent?.name || '',
+      requester: t.requester_name || t.requester?.name || '',
+      requester_email: t.requester_email || t.requester?.email || '',
+      created_at: t.created_at?.toISOString().slice(0, 16).replace('T', ' '),
+      sla_status: t.sla_status,
+    }));
+
+    if (format === 'csv') {
+      const { rowsToCSV } = require('../utils/exportService');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="tickets.csv"');
+      return res.send(rowsToCSV({ columns, rows }));
+    }
+
+    const { rowsToExcelBuffer } = require('../utils/exportService');
+    const buffer = await rowsToExcelBuffer({ sheetName: 'Tickets', columns, rows });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="tickets.xlsx"');
+    res.send(Buffer.from(buffer));
+  } catch (err) { next(err); }
+}
+
 // ─── Obtener un ticket ───────────────────────────────────────────
 async function getOne(req, res, next) {
   try {
@@ -125,6 +183,7 @@ async function getOne(req, res, next) {
         { model: TicketAttachment, as: 'attachments' },
         { model: Asset,      as: 'assets', through: { attributes: [] }, attributes: ['id', 'asset_tag', 'name', 'type'] },
         { model: Problem,    as: 'problem', attributes: ['id', 'problem_number', 'title', 'status'] },
+        { model: Service,    as: 'service', attributes: ['id', 'name', 'criticality'] },
       ],
     });
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
@@ -144,6 +203,7 @@ async function create(req, res, next) {
     const category_id = emptyToNull(req.body.category_id);
     const agent_id     = emptyToNull(req.body.agent_id);
     const branch_id    = emptyToNull(req.body.branch_id);
+    const service_id   = emptyToNull(req.body.service_id);
 
     if (agent_id && !(await isAgentInCompany(agent_id, req.companyId))) {
       await t.rollback();
@@ -166,6 +226,7 @@ async function create(req, res, next) {
       priority,
       type,
       category_id,
+      service_id,
       source,
       agent_id,
       requester_id,
@@ -228,6 +289,15 @@ async function create(req, res, next) {
       });
     }
 
+    // Canales externos (Slack/Telegram) para tickets urgentes, y detección
+    // de incidentes masivos -- ninguno de los dos debe frenar la respuesta.
+    if (priority === 'urgent') {
+      notificationChannelService
+        .broadcast(req.companyId, 'ticket_urgent', `🔴 Ticket urgente #${ticket_number}: ${subject}`)
+        .catch(err => console.error('[Ticket] Error notificando canales:', err.message));
+    }
+    massIncidentService.checkAndNotify(ticket).catch(err => console.error('[Ticket] Error en detección de incidente masivo:', err.message));
+
     res.status(201).json(fullTicket);
   } catch (err) {
     await t.rollback();
@@ -246,9 +316,9 @@ async function update(req, res, next) {
     const updatable = [
       'subject', 'priority', 'type', 'status', 'category_id',
       'agent_id', 'branch_id', 'custom_fields', 'requester_name',
-      'requester_email', 'requester_phone', 'sla_policy_id',
+      'requester_email', 'requester_phone', 'sla_policy_id', 'service_id',
     ];
-    const uuidFields = ['category_id', 'agent_id', 'branch_id', 'sla_policy_id'];
+    const uuidFields = ['category_id', 'agent_id', 'branch_id', 'sla_policy_id', 'service_id'];
     const changes = {};
     updatable.forEach(f => {
       if (req.body[f] === undefined) return;
@@ -452,4 +522,4 @@ async function bulkUpdate(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getOne, create, update, addMessage, getMessages, bulkUpdate };
+module.exports = { list, getOne, create, update, addMessage, getMessages, bulkUpdate, exportTickets };
