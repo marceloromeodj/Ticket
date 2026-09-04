@@ -180,7 +180,7 @@ router.post('/', authorize('super_admin','admin'), requireCompanySelected, async
 
     const agent = await User.create({
       name, email: email.toLowerCase(), password, role,
-      company_id: req.companyId, branch_id, groups,
+      company_id: req.companyId, branch_id: branch_id || null, groups,
     });
     res.status(201).json(agent);
   } catch (err) { next(err); }
@@ -204,6 +204,7 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
     const allowed = ['name','role','branch_id','groups','active','phone','notification_preferences'];
     const updates = {};
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+    if (updates.branch_id === '') updates.branch_id = null; // "Todas" en el select manda ""; la columna es UUID
     if (req.body.password) updates.password = req.body.password;
 
     await agent.update(updates);

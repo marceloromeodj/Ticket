@@ -1,3 +1,4 @@
+const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
 // Importar todos los modelos
@@ -115,6 +116,31 @@ ChatMessage.belongsTo(User,        { foreignKey: 'agent_id',   as: 'agent' });
 
 // CustomField
 CustomField.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
+// ─── Normalización de UUIDs vacíos ─────────────────────────────────
+// Los <select> del frontend mandan "" cuando queda en una opción tipo
+// "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
+// rechaza un string vacío ("invalid input syntax for type uuid") en vez
+// de tratarlo como ausencia de valor. Se corrige acá, una sola vez para
+// todos los modelos, en vez de acordarse de sanitizar cada endpoint que
+// reciba un campo *_id opcional.
+const allModels = [
+  Company, Branch, User, Ticket, TicketMessage, TicketAttachment, Category,
+  Tag, TicketTag, SLAPolicy, AutomationRule, KnowledgeArticle, CannedResponse,
+  Notification, EmailInbox, ChatSession, ChatMessage, CustomField,
+];
+allModels.forEach((model) => {
+  const uuidAttrs = Object.entries(model.rawAttributes)
+    .filter(([, attr]) => attr.type instanceof DataTypes.UUID)
+    .map(([name]) => name);
+  if (uuidAttrs.length === 0) return;
+
+  model.addHook('beforeValidate', (instance) => {
+    uuidAttrs.forEach((attr) => {
+      if (instance[attr] === '') instance[attr] = null;
+    });
+  });
+});
 
 module.exports = {
   sequelize,

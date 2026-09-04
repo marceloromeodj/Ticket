@@ -26,6 +26,13 @@ async function withSignedAttachments(plainObject) {
   return plainObject;
 }
 
+// Los <select> del frontend mandan "" cuando queda en la opción "Sin
+// asignar"/"Todas", pero estas columnas son UUID: Postgres rechaza un
+// string vacío ("invalid input syntax for type uuid"), necesita null.
+function emptyToNull(value) {
+  return value === '' ? null : value;
+}
+
 // Evita asignar un ticket a un usuario de otra empresa (por ejemplo, un
 // agente enviando un agent_id arbitrario en el body de update/bulk).
 async function isAgentInCompany(agentId, companyId) {
@@ -124,9 +131,12 @@ async function create(req, res, next) {
   try {
     const {
       subject, description, priority = 'medium', type = 'question',
-      category_id, requester_id, requester_name, requester_email, requester_phone,
-      source = 'web', agent_id, branch_id, custom_fields = {}, tags = [],
+      requester_id, requester_name, requester_email, requester_phone,
+      source = 'web', custom_fields = {}, tags = [],
     } = req.body;
+    const category_id = emptyToNull(req.body.category_id);
+    const agent_id     = emptyToNull(req.body.agent_id);
+    const branch_id    = emptyToNull(req.body.branch_id);
 
     if (agent_id && !(await isAgentInCompany(agent_id, req.companyId))) {
       await t.rollback();
@@ -229,8 +239,12 @@ async function update(req, res, next) {
       'agent_id', 'branch_id', 'custom_fields', 'requester_name',
       'requester_email', 'requester_phone', 'sla_policy_id',
     ];
+    const uuidFields = ['category_id', 'agent_id', 'branch_id', 'sla_policy_id'];
     const changes = {};
-    updatable.forEach(f => { if (req.body[f] !== undefined) changes[f] = req.body[f]; });
+    updatable.forEach(f => {
+      if (req.body[f] === undefined) return;
+      changes[f] = uuidFields.includes(f) ? emptyToNull(req.body[f]) : req.body[f];
+    });
 
     // Se valida contra la empresa real del ticket (no req.companyId): un
     // super_admin sin empresa seleccionada puede llegar acá con
@@ -394,7 +408,8 @@ async function getMessages(req, res, next) {
 // ─── Bulk operations ─────────────────────────────────────────────
 async function bulkUpdate(req, res, next) {
   try {
-    const { ticket_ids, action, value } = req.body;
+    const { ticket_ids, action } = req.body;
+    const value = action === 'assign' ? emptyToNull(req.body.value) : req.body.value;
     if (!ticket_ids?.length) return res.status(400).json({ error: 'ticket_ids requerido' });
 
     const where = { id: { [Op.in]: ticket_ids }, ...companyScope(req) };
