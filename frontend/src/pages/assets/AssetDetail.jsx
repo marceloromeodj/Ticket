@@ -1,12 +1,31 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Plus, X, Check, Printer, Wrench } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
+import { ArrowLeft, Plus, X, Check, Printer, Wrench, QrCode, Barcode as BarcodeIcon } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { safeFormat as format } from '../../utils/safeDate';
 import { clsx } from 'clsx';
+
+function AssetBarcode({ value }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (canvasRef.current && value) {
+      JsBarcode(canvasRef.current, value, {
+        format: 'CODE128',
+        width: 2,
+        height: 60,
+        fontSize: 14,
+        margin: 8,
+      });
+    }
+  }, [value]);
+
+  return <canvas ref={canvasRef} />;
+}
 
 const TYPE_LABELS = {
   pc: 'PC', notebook: 'Notebook', server: 'Servidor', vm: 'Máquina virtual',
@@ -119,6 +138,7 @@ export default function AssetDetail() {
   const navigate = useNavigate();
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [completingPlan, setCompletingPlan] = useState(null);
+  const [codeType, setCodeType] = useState('qr'); // qr | barcode
 
   const { data: asset, isLoading } = useQuery({
     queryKey: ['asset', id],
@@ -164,13 +184,31 @@ export default function AssetDetail() {
         </div>
 
         <div className="card p-5 flex flex-col items-center text-center">
-          <h2 className="font-semibold text-gray-900 mb-3 self-start">Código QR</h2>
-          <div className="bg-white p-3 border border-gray-100 rounded-lg print:border-0">
-            <QRCodeSVG value={qrUrl} size={140} />
+          <div className="flex items-center justify-between w-full mb-3">
+            <h2 className="font-semibold text-gray-900">{codeType === 'qr' ? 'Código QR' : 'Código de barras'}</h2>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setCodeType('qr')}
+                className={clsx('p-1.5 rounded-lg', codeType === 'qr' ? 'bg-primary-50 text-primary-600' : 'text-gray-400 hover:bg-gray-50')}
+                title="Código QR"
+              >
+                <QrCode size={14} />
+              </button>
+              <button
+                onClick={() => setCodeType('barcode')}
+                className={clsx('p-1.5 rounded-lg', codeType === 'barcode' ? 'bg-primary-50 text-primary-600' : 'text-gray-400 hover:bg-gray-50')}
+                title="Código de barras"
+              >
+                <BarcodeIcon size={14} />
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-gray-400 mt-2 break-all">{qrUrl}</p>
+          <div className="bg-white p-3 border border-gray-100 rounded-lg print:border-0">
+            {codeType === 'qr' ? <QRCodeSVG value={qrUrl} size={140} /> : <AssetBarcode value={asset.asset_tag} />}
+          </div>
+          {codeType === 'qr' && <p className="text-xs text-gray-400 mt-2 break-all">{qrUrl}</p>}
           <button onClick={() => window.print()} className="btn-ghost h-8 text-xs mt-3">
-            <Printer size={12} /> Imprimir para pegar en el equipo
+            <Printer size={12} /> {codeType === 'qr' ? 'Imprimir para pegar en el equipo' : 'Imprimir código de barras'}
           </button>
         </div>
       </div>
