@@ -213,13 +213,17 @@ ApiToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 Company.hasMany(AssetType, { foreignKey: 'company_id', as: 'assetTypes' });
 AssetType.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
-// ─── Normalización de UUIDs vacíos ─────────────────────────────────
+// ─── Normalización de UUIDs y fechas vacíos ────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
-// "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
-// rechaza un string vacío ("invalid input syntax for type uuid") en vez
-// de tratarlo como ausencia de valor. Se corrige acá, una sola vez para
+// "Sin asignar"/"Todas"/"Ninguna" (columnas UUID), y los <input type="date">
+// mandan "" cuando se dejan vacíos (columnas DATE/DATEONLY). En ambos casos
+// Postgres rechaza el string vacío -- para fechas, Sequelize ni siquiera
+// llega a mandar "" tal cual: internamente lo formatea como el string
+// literal "Invalid date" antes de armar el SQL, así que el error que
+// aparece es "invalid input syntax for type date: "Invalid date"" en vez
+// de algo que delate la causa real. Se corrige acá, una sola vez para
 // todos los modelos, en vez de acordarse de sanitizar cada endpoint que
-// reciba un campo *_id opcional.
+// reciba un campo *_id o de fecha opcional.
 const allModels = [
   Company, Branch, User, Ticket, TicketMessage, TicketAttachment, Category,
   Tag, TicketTag, SLAPolicy, AutomationRule, KnowledgeArticle, CannedResponse,
@@ -229,13 +233,13 @@ const allModels = [
   Vendor, Contract, ApiToken, AssetType,
 ];
 allModels.forEach((model) => {
-  const uuidAttrs = Object.entries(model.rawAttributes)
-    .filter(([, attr]) => attr.type instanceof DataTypes.UUID)
+  const emptyToNullAttrs = Object.entries(model.rawAttributes)
+    .filter(([, attr]) => attr.type instanceof DataTypes.UUID || attr.type instanceof DataTypes.DATE || attr.type instanceof DataTypes.DATEONLY)
     .map(([name]) => name);
-  if (uuidAttrs.length === 0) return;
+  if (emptyToNullAttrs.length === 0) return;
 
   model.addHook('beforeValidate', (instance) => {
-    uuidAttrs.forEach((attr) => {
+    emptyToNullAttrs.forEach((attr) => {
       if (instance[attr] === '') instance[attr] = null;
     });
   });
