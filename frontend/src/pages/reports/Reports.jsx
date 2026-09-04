@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { Star } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import api from '../../api/axios';
@@ -12,7 +13,7 @@ import { clsx } from 'clsx';
 const COLORS = ['#6366f1','#f59e0b','#10b981','#6b7280','#ef4444','#3b82f6'];
 const STATUS_LABELS = { open: 'Abiertos', pending: 'Pendientes', resolved: 'Resueltos', closed: 'Cerrados', waiting_customer: 'Esperando' };
 
-const TABS = ['Resumen', 'Por Período', 'Agentes', 'Por Categoría', 'SLA'];
+const TABS = ['Resumen', 'Por Período', 'Agentes', 'Por Categoría', 'SLA', 'Satisfacción'];
 
 export default function Reports() {
   const [tab, setTab] = useState('Resumen');
@@ -41,6 +42,11 @@ export default function Reports() {
   const { data: slaReport } = useQuery({
     queryKey: ['sla-report'],
     queryFn: () => api.get('/reports/sla').then(r => r.data),
+  });
+
+  const { data: satisfaction } = useQuery({
+    queryKey: ['satisfaction-report'],
+    queryFn: () => api.get('/reports/satisfaction').then(r => r.data),
   });
 
   const pieData = overview ? Object.entries(overview.by_status || {}).map(([k, v]) => ({
@@ -323,6 +329,79 @@ export default function Reports() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Satisfacción (CSAT) */}
+      {tab === 'Satisfacción' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="card p-5 border-l-4 border-amber-400">
+              <p className="text-sm text-gray-500">Calificación promedio</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1 flex items-center gap-2">
+                {satisfaction?.avg_rating ?? '—'}
+                <Star size={20} className="fill-amber-400 text-amber-400" />
+              </p>
+            </div>
+            <div className="card p-5 border-l-4 border-green-500">
+              <p className="text-sm text-gray-500">CSAT (4-5 estrellas)</p>
+              <p className="text-3xl font-bold text-green-600 mt-1">{satisfaction?.csat_pct ?? '—'}%</p>
+            </div>
+            <div className="card p-5 border-l-4 border-red-500">
+              <p className="text-sm text-gray-500">Insatisfechos (1-2 estrellas)</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">{satisfaction?.detractor_pct ?? '—'}%</p>
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h2 className="font-semibold text-gray-900 mb-4">
+              Distribución de calificaciones ({satisfaction?.total_responses || 0} respuestas)
+            </h2>
+            <div className="space-y-2">
+              {[5, 4, 3, 2, 1].map(n => {
+                const count = satisfaction?.distribution?.[n - 1] || 0;
+                const pct = satisfaction?.total_responses ? (count / satisfaction.total_responses) * 100 : 0;
+                return (
+                  <div key={n} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 w-10 flex items-center gap-0.5">{n} <Star size={10} className="fill-amber-400 text-amber-400" /></span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                      <div className="bg-amber-400 h-2.5 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-8 text-right">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="card overflow-hidden">
+            <div className="p-5 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900">Satisfacción por agente</h2>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left border-b border-gray-100">
+                  <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Agente</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase text-right">Respuestas</th>
+                  <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase text-right">Promedio</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(satisfaction?.by_agent || []).map(a => (
+                  <tr key={a.agent_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{a.agent_name}</td>
+                    <td className="px-4 py-3 text-right text-gray-500">{a.responses}</td>
+                    <td className="px-4 py-3 text-right font-medium flex items-center justify-end gap-1">
+                      {a.avg_rating} <Star size={12} className="fill-amber-400 text-amber-400" />
+                    </td>
+                  </tr>
+                ))}
+                {(!satisfaction?.by_agent || satisfaction.by_agent.length === 0) && (
+                  <tr><td colSpan={3} className="py-8 text-center text-gray-400">Todavía no hay respuestas de encuestas</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

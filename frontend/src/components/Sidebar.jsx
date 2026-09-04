@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import {
   LayoutDashboard, Ticket, Users, Building2, GitBranch,
   BarChart2, BookOpen, Settings, ChevronLeft, ChevronRight,
-  MessageSquare, Zap, Database, LogOut,
+  Database, AlertOctagon, GitPullRequest, ShieldCheck, LogOut,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -13,11 +13,16 @@ const NAV = [
   { to: '/tickets',   label: 'Tickets',          icon: Ticket },
   { to: '/knowledge', label: 'Base de Conocimiento', icon: BookOpen },
   { type: 'divider' },
+  { to: '/assets',    label: 'Activos (CMDB)',   icon: Database,      roles: ['super_admin','admin','supervisor','agent'] },
+  { to: '/problems',  label: 'Problemas',        icon: AlertOctagon,  roles: ['super_admin','admin','supervisor','agent'] },
+  { to: '/changes',   label: 'Cambios (RFC)',    icon: GitPullRequest, roles: ['super_admin','admin','supervisor','agent'] },
+  { type: 'divider' },
   { to: '/agents',    label: 'Agentes',          icon: Users,         roles: ['super_admin','admin','supervisor'] },
   { to: '/branches',  label: 'Sucursales',       icon: GitBranch,     roles: ['super_admin','admin'] },
   { to: '/companies', label: 'Empresas',         icon: Building2,     roles: ['super_admin'] },
   { type: 'divider' },
   { to: '/reports',   label: 'Reportes',         icon: BarChart2,     roles: ['super_admin','admin','supervisor'] },
+  { to: '/audit',     label: 'Auditoría',        icon: ShieldCheck,   roles: ['super_admin','admin'] },
   { to: '/settings',  label: 'Configuración',    icon: Settings,      roles: ['super_admin','admin'] },
 ];
 

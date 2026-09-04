@@ -162,6 +162,33 @@ export default function TicketDetail() {
     },
   });
 
+  const { data: allProblems = [] } = useQuery({
+    queryKey: ['problems-list'],
+    queryFn: () => api.get('/problems').then(r => r.data?.problems || []),
+  });
+  const { data: allAssets = [] } = useQuery({
+    queryKey: ['assets-list'],
+    queryFn: () => api.get('/assets').then(r => r.data?.assets || []),
+  });
+
+  const linkProblemMutation = useMutation({
+    mutationFn: (problemId) => problemId
+      ? api.post(`/problems/${problemId}/tickets/${id}`)
+      : api.delete(`/problems/${ticket?.problem?.id}/tickets/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['ticket', id]); toast.success('Actualizado'); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const linkAssetMutation = useMutation({
+    mutationFn: (assetId) => api.post(`/assets/${assetId}/tickets/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['ticket', id]); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+  const unlinkAssetMutation = useMutation({
+    mutationFn: (assetId) => api.delete(`/assets/${assetId}/tickets/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['ticket', id]); },
+  });
+
   const replyMutation = useMutation({
     mutationFn: (formData) => api.post(`/tickets/${id}/messages`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -447,6 +474,44 @@ export default function TicketDetail() {
               </div>
             </div>
           )}
+
+          {/* Vinculaciones: problema y activos (CMDB) */}
+          <div className="card p-4 space-y-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vinculaciones</h3>
+            <div>
+              <label className="text-xs text-gray-500">Problema</label>
+              <select
+                className="input h-8 text-sm mt-1"
+                value={ticket.problem?.id || ''}
+                onChange={e => linkProblemMutation.mutate(e.target.value || null)}
+              >
+                <option value="">Sin problema asociado</option>
+                {allProblems.map(p => <option key={p.id} value={p.id}>#{p.problem_number} {p.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Activos relacionados</label>
+              <div className="flex flex-wrap gap-1 mt-1 mb-2">
+                {(ticket.assets || []).map(a => (
+                  <span key={a.id} className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
+                    {a.asset_tag}
+                    <button onClick={() => unlinkAssetMutation.mutate(a.id)} className="text-gray-400 hover:text-red-500">×</button>
+                  </span>
+                ))}
+                {(!ticket.assets || ticket.assets.length === 0) && <span className="text-xs text-gray-400">Ninguno</span>}
+              </div>
+              <select
+                className="input h-8 text-sm"
+                value=""
+                onChange={e => { if (e.target.value) linkAssetMutation.mutate(e.target.value); }}
+              >
+                <option value="">+ Vincular activo...</option>
+                {allAssets.filter(a => !(ticket.assets || []).some(ta => ta.id === a.id)).map(a => (
+                  <option key={a.id} value={a.id}>{a.asset_tag} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </div>

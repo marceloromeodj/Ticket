@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw } from 'lucide-react';
 import api from '../../api/axios';
+import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 
@@ -11,6 +12,59 @@ const TABS = [
   { id: 'automation', label: 'Automatizaciones', icon: Zap },
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
 ];
+
+// ─── Webhook de monitoreo (Zabbix/PRTG) ──────────────────────────────────────
+function MonitoringWebhookCard() {
+  const { user, activeCompanyId } = useAuthStore();
+  const companyId = activeCompanyId || user?.company?.id;
+  const queryClient = useQueryClient();
+
+  const { data: company, isLoading } = useQuery({
+    queryKey: ['company-webhook', companyId],
+    queryFn: () => api.get(`/companies/${companyId}`).then(r => r.data),
+    enabled: !!companyId,
+  });
+
+  const regenMutation = useMutation({
+    mutationFn: () => api.post(`/companies/${companyId}/regenerate-webhook-token`),
+    onSuccess: () => { queryClient.invalidateQueries(['company-webhook']); toast.success('Token regenerado'); },
+  });
+
+  if (isLoading || !company) return null;
+
+  const webhookUrl = `${window.location.origin}/webhook/monitoring/${company.monitoring_webhook_token}`;
+
+  const copy = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    toast.success('URL copiada');
+  };
+
+  return (
+    <div className="card p-6 space-y-3">
+      <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Activity size={16} /> Integración con monitoreo (Zabbix / PRTG)</h2>
+      <p className="text-sm text-gray-500">
+        Configurá esta URL como notificación webhook en Zabbix (Media type: Webhook) o PRTG (Notification: HTTP request)
+        para que las alertas creen y resuelvan tickets automáticamente.
+      </p>
+      <div className="flex items-center gap-2">
+        <input readOnly className="input font-mono text-xs" value={webhookUrl} />
+        <button type="button" onClick={copy} className="btn-ghost h-9 px-3"><Copy size={14} /></button>
+        <button
+          type="button"
+          onClick={() => { if (confirm('¿Regenerar el token? La URL anterior dejará de funcionar.')) regenMutation.mutate(); }}
+          className="btn-ghost h-9 px-3"
+        >
+          <RefreshCw size={14} />
+        </button>
+      </div>
+      <p className="text-xs text-gray-400">
+        El cuerpo (body) del webhook debe tener este formato JSON:{' '}
+        <code className="bg-gray-50 px-1 rounded">{'{ "source": "zabbix", "status": "problem", "external_id": "...", "host": "...", "message": "...", "severity": "high" }'}</code>
+        {' '}(usá <code className="bg-gray-50 px-1 rounded">"status": "resolved"</code> con el mismo <code className="bg-gray-50 px-1 rounded">external_id</code> para cerrar el ticket automáticamente).
+      </p>
+    </div>
+  );
+}
 
 // ─── General ────────────────────────────────────────────────────────────────
 function GeneralSettings() {
@@ -97,6 +151,8 @@ function GeneralSettings() {
       <button onClick={() => mutation.mutate(form)} disabled={mutation.isLoading} className="btn-primary">
         <Save size={16} /> {mutation.isLoading ? 'Guardando...' : 'Guardar cambios'}
       </button>
+
+      <MonitoringWebhookCard />
     </div>
   );
 }

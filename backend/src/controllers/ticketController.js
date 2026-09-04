@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { sequelize, Ticket, TicketMessage, TicketAttachment, User, Category, Tag, SLAPolicy, Notification } = require('../models');
+const { sequelize, Ticket, TicketMessage, TicketAttachment, User, Category, Tag, SLAPolicy, Notification, Asset, Problem } = require('../models');
 const { emitToCompany, emitToTicket, emitToUser } = require('../config/socket');
 const { slaService }         = require('../services/slaService');
 const { automationService }  = require('../services/automationService');
@@ -123,6 +123,8 @@ async function getOne(req, res, next) {
         { model: Tag,        as: 'tags',      through: { attributes: [] } },
         { model: SLAPolicy,  as: 'slaPolicy' },
         { model: TicketAttachment, as: 'attachments' },
+        { model: Asset,      as: 'assets', through: { attributes: [] }, attributes: ['id', 'asset_tag', 'name', 'type'] },
+        { model: Problem,    as: 'problem', attributes: ['id', 'problem_number', 'title', 'status'] },
       ],
     });
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });

@@ -17,6 +17,11 @@ import Reports       from './pages/reports/Reports';
 import KnowledgeBase from './pages/knowledge/KnowledgeBase';
 import Settings      from './pages/settings/Settings';
 import CustomerPortal from './pages/portal/CustomerPortal';
+import SurveyPage    from './pages/portal/SurveyPage';
+import AssetList     from './pages/assets/AssetList';
+import ProblemList   from './pages/problems/ProblemList';
+import ChangeList    from './pages/changes/ChangeList';
+import AuditLogPage  from './pages/audit/AuditLogPage';
 
 function PrivateRoute({ children, roles }) {
   const { user, token } = useAuthStore();
@@ -40,6 +45,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
 
         {/* Portal del cliente (público) */}
+        <Route path="/portal/survey/:token" element={<SurveyPage />} />
         <Route path="/portal/*" element={<CustomerPortal />} />
 
         {/* App principal */}
@@ -54,6 +60,10 @@ export default function App() {
           <Route path="reports/*"     element={<PrivateRoute roles={['super_admin','admin','supervisor']}><Reports /></PrivateRoute>} />
           <Route path="knowledge/*"   element={<KnowledgeBase />} />
           <Route path="settings/*"    element={<PrivateRoute roles={['super_admin','admin']}><Settings /></PrivateRoute>} />
+          <Route path="assets"        element={<AssetList />} />
+          <Route path="problems"      element={<ProblemList />} />
+          <Route path="changes"       element={<ChangeList />} />
+          <Route path="audit"         element={<PrivateRoute roles={['super_admin','admin']}><AuditLogPage /></PrivateRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
