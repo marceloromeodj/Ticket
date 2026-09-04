@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
-import { ArrowLeft, Plus, X, Check, Printer, Wrench, QrCode, Barcode as BarcodeIcon } from 'lucide-react';
+import { ArrowLeft, Plus, X, Check, Printer, Wrench, QrCode, Barcode as BarcodeIcon, History, ArrowRight } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { safeFormat as format } from '../../utils/safeDate';
@@ -133,6 +133,46 @@ function CompleteModal({ plan, onClose }) {
   );
 }
 
+function MovementHistory({ assetId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['asset-history', assetId],
+    queryFn: () => api.get(`/assets/${assetId}/history`).then(r => r.data),
+  });
+
+  const events = data?.events || [];
+
+  return (
+    <div className="card p-5">
+      <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><History size={16} /> Historial de movimientos</h2>
+      {isLoading && <p className="text-sm text-gray-400 text-center py-4">Cargando...</p>}
+      {!isLoading && events.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Sin movimientos registrados todavía</p>}
+      <div className="space-y-3">
+        {events.map(ev => (
+          <div key={ev.id} className="border-l-2 border-primary-100 pl-3 py-0.5">
+            <p className="text-xs text-gray-400">
+              {format(ev.created_at, "d MMM yyyy HH:mm")} {ev.user_name && `· ${ev.user_name}`}
+            </p>
+            {ev.type === 'create' ? (
+              <p className="text-sm text-gray-700 mt-0.5">Activo dado de alta</p>
+            ) : (
+              <div className="mt-0.5 space-y-1">
+                {ev.changes.map((c, i) => (
+                  <p key={i} className="text-sm text-gray-700 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-500">{c.label}:</span>
+                    <span>{c.from ?? '—'}</span>
+                    <ArrowRight size={11} className="text-gray-300" />
+                    <span className="font-medium">{c.to ?? '—'}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AssetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -255,6 +295,8 @@ export default function AssetDetail() {
           </div>
         </div>
       )}
+
+      <MovementHistory assetId={id} />
 
       {showPlanModal && <PlanModal assetId={id} onClose={() => setShowPlanModal(false)} />}
       {completingPlan && <CompleteModal plan={completingPlan} onClose={() => setCompletingPlan(null)} />}

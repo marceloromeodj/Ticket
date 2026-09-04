@@ -1,8 +1,19 @@
 const router = require('express').Router();
-const { Asset, Branch, User, Ticket } = require('../models');
+const { Asset, Branch, User, Ticket, AuditLog } = require('../models');
 const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const { Op } = require('sequelize');
+
+// Campos que constituyen "movimientos" del activo (a quién/dónde está
+// asignado), a diferencia de cualquier otro dato editable. El historial
+// completo de auditoría ya existe en AuditLog; esto solo lo filtra y le
+// da nombres legibles en vez de UUIDs sueltos.
+const MOVEMENT_FIELDS = {
+  owner_id:  'Asignado a',
+  branch_id: 'Sucursal',
+  location:  'Ubicación',
+  status:    'Estado',
+};
 
 router.use(authenticate, tenantMiddleware);
 
@@ -71,6 +82,68 @@ router.get('/:id', async (req, res, next) => {
     });
     if (!asset) return res.status(404).json({ error: 'Activo no encontrado' });
     res.json(asset);
+  } catch (err) { next(err); }
+});
+
+// Historial de movimientos del activo (asignación, sucursal, ubicación,
+// estado) -- reutiliza AuditLog en vez de llevar su propia tabla.
+router.get('/:id/history', async (req, res, next) => {
+  try {
+    const asset = await Asset.findOne({ where: { id: req.params.id, ...companyScope(req) } });
+    if (!asset) return res.status(404).json({ error: 'Activo no encontrado' });
+
+    const logs = await AuditLog.findAll({
+      where: { entity_type: 'Asset', entity_id: req.params.id },
+      order: [['created_at', 'DESC']],
+    });
+
+    // Junta todos los owner_id/branch_id mencionados en el historial (antes
+    // y después) para resolverlos a nombre en un solo par de queries, en
+    // vez de una por cada valor de cada evento.
+    const userIds = new Set();
+    const branchIds = new Set();
+    logs.forEach(log => {
+      [log.before, log.after].forEach(snap => {
+        if (snap?.owner_id) userIds.add(snap.owner_id);
+        if (snap?.branch_id) branchIds.add(snap.branch_id);
+      });
+    });
+    const [users, branches] = await Promise.all([
+      userIds.size ? User.findAll({ where: { id: { [Op.in]: [...userIds] } }, attributes: ['id', 'name'] }) : [],
+      branchIds.size ? Branch.findAll({ where: { id: { [Op.in]: [...branchIds] } }, attributes: ['id', 'name'] }) : [],
+    ]);
+    const userName = (id) => users.find(u => u.id === id)?.name || null;
+    const branchName = (id) => branches.find(b => b.id === id)?.name || null;
+    const displayValue = (field, value) => {
+      if (value === null || value === undefined || value === '') return null;
+      if (field === 'owner_id') return userName(value) || 'Usuario eliminado';
+      if (field === 'branch_id') return branchName(value) || 'Sucursal eliminada';
+      return value;
+    };
+
+    const events = [];
+    for (const log of logs) {
+      if (log.action === 'create') {
+        events.push({ id: log.id, created_at: log.created_at, user_name: log.user_name, type: 'create', changes: [] });
+        continue;
+      }
+      if (log.action !== 'update') continue;
+
+      const changes = Object.entries(MOVEMENT_FIELDS)
+        .map(([field, label]) => {
+          const from = log.before?.[field] ?? null;
+          const to = log.after?.[field] ?? null;
+          if (from === to) return null;
+          return { field, label, from: displayValue(field, from), to: displayValue(field, to) };
+        })
+        .filter(Boolean);
+
+      if (changes.length > 0) {
+        events.push({ id: log.id, created_at: log.created_at, user_name: log.user_name, type: 'update', changes });
+      }
+    }
+
+    res.json({ events });
   } catch (err) { next(err); }
 });
 
