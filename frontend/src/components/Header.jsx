@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, Plus, Search, X } from 'lucide-react';
 import { useNotificationStore } from '../store/notificationStore';
 import { clsx } from 'clsx';
-import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { safeFormatDistanceToNow } from '../utils/safeDate';
 import CompanySwitcher from './CompanySwitcher';
 
 export default function Header() {
@@ -96,7 +96,7 @@ export default function Header() {
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: es })}
+                      {safeFormatDistanceToNow(n.created_at, { addSuffix: true, locale: es })}
                     </p>
                   </button>
                 ))}

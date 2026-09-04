@@ -7,8 +7,8 @@ import {
 } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
-import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { safeFormat as format, safeFormatDistanceToNow as formatDistanceToNow } from '../../utils/safeDate';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';

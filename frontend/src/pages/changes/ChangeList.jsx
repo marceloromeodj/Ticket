@@ -5,7 +5,7 @@ import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
-import { format } from 'date-fns';
+import { safeFormat as format } from '../../utils/safeDate';
 import { es } from 'date-fns/locale';
 
 const STATUS_LABELS = {

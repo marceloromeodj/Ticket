@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Ticket, Search, Plus, Send, MessageSquare, BookOpen, ChevronRight, ArrowLeft } from 'lucide-react';
 import api from '../../api/axios';
-import { format } from 'date-fns';
+import { safeFormat as format } from '../../utils/safeDate';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/axios';
-import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { safeFormat } from '../../utils/safeDate';
 import { clsx } from 'clsx';
 
 const ACTION_COLORS = {
@@ -63,7 +63,7 @@ export default function AuditLogPage() {
               {logs.map(log => (
                 <tr key={log.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                    {format(new Date(log.created_at), "d MMM yyyy HH:mm:ss", { locale: es })}
+                    {safeFormat(log.created_at, "d MMM yyyy HH:mm:ss", { locale: es })}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-700">{log.user?.name || log.user_name || 'Sistema'}</td>
                   <td className="px-4 py-3">

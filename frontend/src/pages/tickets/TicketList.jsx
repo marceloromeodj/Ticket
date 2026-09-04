@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Filter, Search, ChevronDown, ChevronUp, RefreshCw, Trash2, CheckSquare } from 'lucide-react';
 import api from '../../api/axios';
-import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { safeFormat as format } from '../../utils/safeDate';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Ticket, Clock, CheckCircle, AlertTriangle, TrendingUp, Users } from 'lucide-react';
 import api from '../api/axios';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { format } from 'date-fns';
+import { safeFormat as format } from '../utils/safeDate';
 import { es } from 'date-fns/locale';
 
 function StatCard({ title, value, icon: Icon, color, sub, to }) {

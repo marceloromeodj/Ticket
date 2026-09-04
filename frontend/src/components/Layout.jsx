@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import ErrorBoundary from './ErrorBoundary';
 import toast from 'react-hot-toast';
 
 let socket;
@@ -12,6 +13,7 @@ let socket;
 export default function Layout() {
   const { user, token } = useAuthStore();
   const { addNew, fetch: fetchNotifs } = useNotificationStore();
+  const location = useLocation();
 
   // Inicializar notificaciones
   useEffect(() => {
@@ -50,7 +52,9 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
         <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
