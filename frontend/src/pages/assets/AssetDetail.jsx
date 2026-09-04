@@ -243,10 +243,12 @@ export default function AssetDetail() {
               </button>
             </div>
           </div>
-          <div className="bg-white p-3 border border-gray-100 rounded-lg print:border-0">
-            {codeType === 'qr' ? <QRCodeSVG value={qrUrl} size={140} /> : <AssetBarcode value={asset.asset_tag} />}
+          <div className="print-area flex flex-col items-center">
+            <div className="bg-white p-3 border border-gray-100 rounded-lg print:border-0">
+              {codeType === 'qr' ? <QRCodeSVG value={qrUrl} size={140} /> : <AssetBarcode value={asset.asset_tag} />}
+            </div>
+            {codeType === 'qr' && <p className="text-xs text-gray-400 mt-2 break-all">{qrUrl}</p>}
           </div>
-          {codeType === 'qr' && <p className="text-xs text-gray-400 mt-2 break-all">{qrUrl}</p>}
           <button onClick={() => window.print()} className="btn-ghost h-8 text-xs mt-3">
             <Printer size={12} /> {codeType === 'qr' ? 'Imprimir para pegar en el equipo' : 'Imprimir código de barras'}
           </button>
