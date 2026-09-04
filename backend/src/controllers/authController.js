@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { User, Company, Branch } = require('../models');
 const { emailService } = require('../services/emailService');
 const { getSubdomainSlug } = require('../utils/subdomain');
+const { logAudit } = require('../utils/audit');
 
 function signToken(user) {
   return jwt.sign(
@@ -45,13 +46,18 @@ async function login(req, res, next) {
     });
 
     if (!user) {
+      await logAudit(req, { action: 'login_failed', entity_type: 'User', entity_id: null, company_id: null, user_id: null, user_name: email, after: { reason: 'usuario no encontrado' } });
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
     const valid = await user.checkPassword(password);
-    if (!valid) return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!valid) {
+      await logAudit(req, { action: 'login_failed', entity_type: 'User', entity_id: user.id, company_id: user.company_id, user_id: user.id, user_name: user.name, after: { reason: 'contraseña incorrecta' } });
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
 
     await user.update({ last_login_at: new Date() });
+    await logAudit(req, { action: 'login', entity_type: 'User', entity_id: user.id, company_id: user.company_id, user_id: user.id, user_name: user.name });
 
     const token        = signToken(user);
     const refreshToken = signRefreshToken(user.id);

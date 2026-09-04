@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { sequelize, Ticket, TicketMessage, User, Category } = require('../models');
+const { sequelize, Ticket, TicketMessage, User, Category, TicketSurvey } = require('../models');
 const moment = require('moment-timezone');
 const { companyScope } = require('../middleware/auth');
 
@@ -165,4 +165,48 @@ async function slaReport(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { overview, ticketsByDate, agentPerformance, byCategory, slaReport };
+// ─── Satisfacción del usuario (CSAT) ──────────────────────────────
+async function satisfactionReport(req, res, next) {
+  try {
+    const { from, to } = req.query;
+    const from_ = from ? new Date(from) : moment().subtract(30, 'days').toDate();
+    const to_   = to   ? new Date(to)   : new Date();
+
+    const where = { ...companyScope(req), responded_at: { [Op.between]: [from_, to_] } };
+
+    const surveys = await TicketSurvey.findAll({
+      where,
+      include: [{ model: Ticket, as: 'ticket', attributes: ['agent_id'], include: [{ model: User, as: 'agent', attributes: ['id', 'name'] }] }],
+    });
+
+    const total = surveys.length;
+    const avg = total ? surveys.reduce((sum, s) => sum + s.rating, 0) / total : 0;
+    const distribution = [1, 2, 3, 4, 5].map(n => surveys.filter(s => s.rating === n).length);
+    // % que calificó 4 o 5 (CSAT) y % que calificó 1-2 (detractor, proxy simple de NPS)
+    const csat_pct = total ? Math.round((surveys.filter(s => s.rating >= 4).length / total) * 100) : 0;
+    const detractor_pct = total ? Math.round((surveys.filter(s => s.rating <= 2).length / total) * 100) : 0;
+
+    const byAgentMap = {};
+    surveys.forEach(s => {
+      const agent = s.ticket?.agent;
+      if (!agent) return;
+      if (!byAgentMap[agent.id]) byAgentMap[agent.id] = { agent_id: agent.id, agent_name: agent.name, count: 0, sum: 0 };
+      byAgentMap[agent.id].count += 1;
+      byAgentMap[agent.id].sum += s.rating;
+    });
+    const by_agent = Object.values(byAgentMap)
+      .map(a => ({ agent_id: a.agent_id, agent_name: a.agent_name, responses: a.count, avg_rating: Math.round((a.sum / a.count) * 10) / 10 }))
+      .sort((a, b) => b.avg_rating - a.avg_rating);
+
+    res.json({
+      total_responses: total,
+      avg_rating: Math.round(avg * 10) / 10,
+      csat_pct,
+      detractor_pct,
+      distribution, // [count con 1 estrella, ..., count con 5 estrellas]
+      by_agent,
+    });
+  } catch (err) { next(err); }
+}
+
+module.exports = { overview, ticketsByDate, agentPerformance, byCategory, slaReport, satisfactionReport };

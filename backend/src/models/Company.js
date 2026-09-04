@@ -1,6 +1,8 @@
 const { DataTypes } = require('sequelize');
+const crypto = require('crypto');
 
-module.exports = (sequelize) => sequelize.define('Company', {
+module.exports = (sequelize) => {
+const Company = sequelize.define('Company', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -67,6 +69,13 @@ module.exports = (sequelize) => sequelize.define('Company', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  // Token secreto para el webhook de monitoreo (Zabbix/PRTG -> tickets).
+  // Va en la URL del webhook, no en un header, porque esas plataformas
+  // solo permiten configurar una URL fija de notificación.
+  monitoring_webhook_token: {
+    type: DataTypes.STRING(64),
+    unique: true,
+  },
 }, {
   tableName: 'companies',
   indexes: [
@@ -74,3 +83,12 @@ module.exports = (sequelize) => sequelize.define('Company', {
     { fields: ['active'] },
   ],
 });
+
+Company.beforeCreate((company) => {
+  if (!company.monitoring_webhook_token) {
+    company.monitoring_webhook_token = crypto.randomBytes(24).toString('hex');
+  }
+});
+
+return Company;
+};

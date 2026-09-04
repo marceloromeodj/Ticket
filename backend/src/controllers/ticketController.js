@@ -7,6 +7,8 @@ const { notificationService } = require('../services/notificationService');
 const { storageService }     = require('../services/storageService');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
 const { companyScope }       = require('../middleware/auth');
+const { logAudit }           = require('../utils/audit');
+const { surveyService }      = require('../services/surveyService');
 
 // Reemplaza la URL pública guardada por una URL firmada de corta duración,
 // generada recién ahora que ya se validó que el usuario tiene acceso al
@@ -204,6 +206,8 @@ async function create(req, res, next) {
       ],
     });
 
+    await logAudit(req, { action: 'create', entity_type: 'Ticket', entity_id: ticket.id, after: { subject, priority, status: 'open' } });
+
     // Emitir evento en tiempo real
     emitToCompany(req.companyId, 'ticket:created', fullTicket);
     if (agent_id) emitToUser(agent_id, 'ticket:assigned', fullTicket);
@@ -265,6 +269,13 @@ async function update(req, res, next) {
     }
 
     await ticket.update(changes);
+    await logAudit(req, { action: 'update', entity_type: 'Ticket', entity_id: ticket.id, before: { status: prev.status, priority: prev.priority, agent_id: prev.agent_id }, after: { status: ticket.status, priority: ticket.priority, agent_id: ticket.agent_id } });
+
+    // Encuesta de satisfacción: se dispara la primera vez que el ticket
+    // pasa a resuelto/cerrado (surveyService no duplica si ya existe una).
+    if (prev.status !== ticket.status && ['resolved', 'closed'].includes(ticket.status)) {
+      surveyService.maybeCreateSurvey(ticket).catch(err => console.error('[Survey] Error:', err.message));
+    }
 
     // Tags si vienen en el body
     if (req.body.tags !== undefined) await ticket.setTags(req.body.tags);

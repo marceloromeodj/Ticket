@@ -62,6 +62,14 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
   email_message_id:   DataTypes.STRING(500),
   whatsapp_chat_id:   DataTypes.STRING(200),
 
+  // ITSM: problema al que pertenece este ticket (si es un incidente recurrente)
+  problem_id: DataTypes.UUID,
+
+  // Integración con monitoreo (Zabbix/PRTG): permite encontrar el ticket
+  // correspondiente cuando llega el evento de "resuelto" de la misma alerta.
+  external_source:    DataTypes.STRING(50),  // 'zabbix' | 'prtg'
+  external_alert_id:  DataTypes.STRING(200),
+
   // Campos custom (JSONB para flexibilidad)
   custom_fields: {
     type: DataTypes.JSONB,
@@ -88,6 +96,8 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
     { fields: ['ticket_number', 'company_id'], unique: true },
     { fields: ['created_at'] },
     { fields: ['sla_status'] },
+    { fields: ['problem_id'] },
+    { fields: ['external_source', 'external_alert_id'] },
     {
       name: 'tickets_search_idx',
       fields: ['subject', 'requester_email'],

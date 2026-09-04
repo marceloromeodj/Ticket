@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const { whatsappService } = require('../services/whatsappService');
+const { monitoringService } = require('../services/monitoringService');
+const { Company } = require('../models');
 
 // WhatsApp Webhook verification
 router.get('/whatsapp', (req, res) => {
@@ -52,6 +54,23 @@ router.post('/whatsapp', verifyMetaSignature, async (req, res) => {
     await whatsappService.processWebhook(req.body);
   } catch (err) {
     console.error('[WhatsApp] Webhook error:', err.message);
+  }
+});
+
+// ─── Monitoreo (Zabbix/PRTG → tickets) ────────────────────────────
+// El token identifica la empresa (no hay sesión de usuario posible desde
+// Zabbix/PRTG); ver services/monitoringService.js para el contrato JSON
+// esperado y cómo configurarlo en cada plataforma.
+router.post('/monitoring/:token', async (req, res) => {
+  try {
+    const company = await Company.findOne({ where: { monitoring_webhook_token: req.params.token, active: true } });
+    if (!company) return res.sendStatus(404);
+
+    const result = await monitoringService.processAlert(company, req.body);
+    res.json(result);
+  } catch (err) {
+    console.error('[Monitoring] Webhook error:', err.message);
+    res.status(400).json({ error: err.message });
   }
 });
 

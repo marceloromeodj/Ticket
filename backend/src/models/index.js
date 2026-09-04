@@ -21,6 +21,12 @@ const ChatSession      = require('./ChatSession')(sequelize);
 const ChatMessage      = require('./ChatMessage')(sequelize);
 const CustomField      = require('./CustomField')(sequelize);
 const UserBranch       = require('./UserBranch')(sequelize);
+const Asset            = require('./Asset')(sequelize);
+const TicketAsset      = require('./TicketAsset')(sequelize);
+const Problem          = require('./Problem')(sequelize);
+const ChangeRequest    = require('./ChangeRequest')(sequelize);
+const TicketSurvey     = require('./TicketSurvey')(sequelize);
+const AuditLog         = require('./AuditLog')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -124,6 +130,39 @@ ChatMessage.belongsTo(User,        { foreignKey: 'agent_id',   as: 'agent' });
 // CustomField
 CustomField.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
+// ─── CMDB: Asset ────────────────────────────────────────────────
+Company.hasMany(Asset, { foreignKey: 'company_id', as: 'assets' });
+Branch.hasMany(Asset,  { foreignKey: 'branch_id',  as: 'assets' });
+Asset.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+Asset.belongsTo(Branch,  { foreignKey: 'branch_id',  as: 'branch' });
+Asset.belongsTo(User,    { foreignKey: 'owner_id',   as: 'owner' });
+Asset.belongsToMany(Ticket, { through: TicketAsset, foreignKey: 'asset_id',  otherKey: 'ticket_id', as: 'tickets' });
+Ticket.belongsToMany(Asset, { through: TicketAsset, foreignKey: 'ticket_id', otherKey: 'asset_id',  as: 'assets' });
+
+// ─── Problem ────────────────────────────────────────────────────
+Company.hasMany(Problem, { foreignKey: 'company_id', as: 'problems' });
+Problem.belongsTo(Company,  { foreignKey: 'company_id',  as: 'company' });
+Problem.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+Problem.belongsTo(User,     { foreignKey: 'agent_id',     as: 'agent' });
+Problem.hasMany(Ticket,     { foreignKey: 'problem_id',   as: 'tickets' });
+Ticket.belongsTo(Problem,   { foreignKey: 'problem_id',   as: 'problem' });
+
+// ─── ChangeRequest (RFC) ──────────────────────────────────────────
+Company.hasMany(ChangeRequest, { foreignKey: 'company_id', as: 'changeRequests' });
+ChangeRequest.belongsTo(Company, { foreignKey: 'company_id',  as: 'company' });
+ChangeRequest.belongsTo(User,    { foreignKey: 'requested_by', as: 'requester' });
+ChangeRequest.belongsTo(User,    { foreignKey: 'approved_by',  as: 'approver' });
+ChangeRequest.belongsTo(Problem, { foreignKey: 'problem_id',   as: 'problem' });
+
+// ─── TicketSurvey (CSAT) ──────────────────────────────────────────
+Ticket.hasOne(TicketSurvey,      { foreignKey: 'ticket_id', as: 'survey' });
+TicketSurvey.belongsTo(Ticket,   { foreignKey: 'ticket_id', as: 'ticket' });
+TicketSurvey.belongsTo(Company,  { foreignKey: 'company_id', as: 'company' });
+
+// ─── AuditLog ───────────────────────────────────────────────────
+AuditLog.belongsTo(User,    { foreignKey: 'user_id',    as: 'user' });
+AuditLog.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
 // ─── Normalización de UUIDs vacíos ─────────────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
 // "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
@@ -135,6 +174,7 @@ const allModels = [
   Company, Branch, User, Ticket, TicketMessage, TicketAttachment, Category,
   Tag, TicketTag, SLAPolicy, AutomationRule, KnowledgeArticle, CannedResponse,
   Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
+  Asset, TicketAsset, Problem, ChangeRequest, TicketSurvey, AuditLog,
 ];
 allModels.forEach((model) => {
   const uuidAttrs = Object.entries(model.rawAttributes)
@@ -170,4 +210,10 @@ module.exports = {
   ChatMessage,
   CustomField,
   UserBranch,
+  Asset,
+  TicketAsset,
+  Problem,
+  ChangeRequest,
+  TicketSurvey,
+  AuditLog,
 };

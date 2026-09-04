@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { parse } = require('csv-parse/sync');
 const { User, Branch } = require('../models');
 const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
+const { logAudit } = require('../utils/audit');
 const { Op } = require('sequelize');
 
 router.use(authenticate, tenantMiddleware);
@@ -198,6 +199,7 @@ router.post('/', authorize('super_admin','admin'), requireCompanySelected, async
       company_id: req.companyId, branch_id: branch_id || null, groups,
     });
     await agent.setBranches(resolveBranchIds(branch_id, branch_ids));
+    await logAudit(req, { action: 'create', entity_type: 'User', entity_id: agent.id, after: { name: agent.name, email: agent.email, role: agent.role } });
 
     const fullAgent = await User.findByPk(agent.id, {
       include: [
@@ -229,6 +231,7 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
   try {
     const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
+    const before = { name: agent.name, role: agent.role, active: agent.active, branch_id: agent.branch_id };
 
     const allowed = ['name','role','branch_id','groups','active','phone','notification_preferences'];
     const updates = {};
@@ -240,6 +243,10 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
     if (req.body.branch_ids !== undefined || req.body.branch_id !== undefined) {
       await agent.setBranches(resolveBranchIds(agent.branch_id, req.body.branch_ids));
     }
+    await logAudit(req, {
+      action: 'update', entity_type: 'User', entity_id: agent.id, before,
+      after: { name: agent.name, role: agent.role, active: agent.active, branch_id: agent.branch_id },
+    });
 
     const fullAgent = await User.findByPk(agent.id, {
       include: [
@@ -257,6 +264,7 @@ router.delete('/:id', authorize('super_admin','admin'), async (req, res, next) =
     const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
     await agent.update({ active: false });
+    await logAudit(req, { action: 'deactivate', entity_type: 'User', entity_id: agent.id });
     res.json({ message: 'Agente desactivado' });
   } catch (err) { next(err); }
 });

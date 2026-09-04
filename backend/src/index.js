@@ -37,9 +37,19 @@ const inboxRoutes      = require('./routes/inboxes');
 const chatRoutes       = require('./routes/chat');
 const webhookRoutes    = require('./routes/webhook');
 const portalRoutes     = require('./routes/portal');
+const assetRoutes      = require('./routes/assets');
+const problemRoutes    = require('./routes/problems');
+const changeRoutes     = require('./routes/changes');
+const auditRoutes      = require('./routes/audit');
 
 const app    = express();
 const server = http.createServer(app);
+
+// Solo confía en el primer proxy (nginx delante del backend). Necesario
+// para que req.ip refleje la IP real del cliente (X-Forwarded-For) en vez
+// de la IP interna de nginx -- afecta el rate limiting y el log de
+// auditoría por IP.
+app.set('trust proxy', 1);
 
 // ─── Middlewares globales ────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -112,6 +122,10 @@ app.use(`${api}/notifications`, notifRoutes);
 app.use(`${api}/inboxes`,      inboxRoutes);
 app.use(`${api}/chat`,         chatRoutes);
 app.use(`${api}/portal`,       portalRoutes);
+app.use(`${api}/assets`,       assetRoutes);
+app.use(`${api}/problems`,     problemRoutes);
+app.use(`${api}/changes`,      changeRoutes);
+app.use(`${api}/audit`,        auditRoutes);
 
 // WhatsApp & Email webhooks (fuera del prefijo /api)
 app.use('/webhook', webhookRoutes);

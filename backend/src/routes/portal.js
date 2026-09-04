@@ -3,10 +3,45 @@
  * Acceso en /api/portal/
  */
 const router = require('express').Router();
-const { sequelize, Ticket, TicketMessage, KnowledgeArticle, Category, User, ChatSession } = require('../models');
+const { sequelize, Ticket, TicketMessage, KnowledgeArticle, Category, User, ChatSession, TicketSurvey } = require('../models');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+
+// ─── Encuesta de satisfacción (CSAT) ──────────────────────────────
+// Público de verdad: el token de la encuesta es la única identidad
+// necesaria, no requiere company_id (por eso se registra antes de
+// portalAuth, que sí lo exige).
+router.get('/survey/:token', async (req, res, next) => {
+  try {
+    const survey = await TicketSurvey.findOne({
+      where: { token: req.params.token },
+      include: [{ model: Ticket, as: 'ticket', attributes: ['ticket_number', 'subject', 'status'] }],
+    });
+    if (!survey) return res.status(404).json({ error: 'Encuesta no encontrada' });
+    res.json({
+      ticket_number: survey.ticket.ticket_number,
+      subject: survey.ticket.subject,
+      already_responded: !!survey.responded_at,
+      rating: survey.rating,
+      comment: survey.comment,
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/survey/:token', async (req, res, next) => {
+  try {
+    const { rating, comment } = req.body;
+    if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'La calificación debe ser entre 1 y 5' });
+
+    const survey = await TicketSurvey.findOne({ where: { token: req.params.token } });
+    if (!survey) return res.status(404).json({ error: 'Encuesta no encontrada' });
+    if (survey.responded_at) return res.status(400).json({ error: 'Esta encuesta ya fue respondida' });
+
+    await survey.update({ rating, comment: comment || null, responded_at: new Date() });
+    res.json({ message: 'Gracias por tu respuesta' });
+  } catch (err) { next(err); }
+});
 
 // Middleware ligero para portal (no requiere cuenta, solo company)
 function portalAuth(req, res, next) {

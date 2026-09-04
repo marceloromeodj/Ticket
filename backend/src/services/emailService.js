@@ -51,9 +51,11 @@ const emailService = {
   /**
    * Enviar notificación genérica
    */
-  async sendRaw({ to, subject, html, text }) {
-    // Usa SMTP de la primera bandeja si no hay configuración
-    const inbox = await EmailInbox.findOne({ where: { active: true } });
+  async sendRaw({ to, subject, html, text, companyId }) {
+    // Si se pasa companyId, usa una bandeja de esa empresa; si no, la
+    // primera activa que encuentre (compatibilidad con llamadas previas
+    // sin contexto de empresa, ej. reset de contraseña).
+    const inbox = await EmailInbox.findOne({ where: { active: true, ...(companyId ? { company_id: companyId } : {}) } });
     if (!inbox) return console.warn('[Email] Sin SMTP configurado');
 
     const transport = createTransport(inbox);

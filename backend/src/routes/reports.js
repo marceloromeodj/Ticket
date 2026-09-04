@@ -9,5 +9,6 @@ router.get('/tickets-by-date',   ctrl.ticketsByDate);
 router.get('/agent-performance', ctrl.agentPerformance);
 router.get('/by-category',       ctrl.byCategory);
 router.get('/sla',               ctrl.slaReport);
+router.get('/satisfaction',      ctrl.satisfactionReport);
 
 module.exports = router;
