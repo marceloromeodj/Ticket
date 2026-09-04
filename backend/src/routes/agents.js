@@ -147,12 +147,16 @@ router.post('/import', authorize('super_admin', 'admin'), requireCompanySelected
 // Listar agentes de la empresa
 router.get('/', async (req, res, next) => {
   try {
-    const { search, role, branch_id, active = true } = req.query;
+    const { search, role, branch_id, active } = req.query;
     const where = {
       ...companyScope(req),
       role: { [Op.in]: ['admin', 'supervisor', 'agent'] },
     };
-    if (active !== 'all') where.active = active === 'true';
+    // Bug previo: "active" por defecto era el booleano `true`, y
+    // `true === 'true'` da false -- terminaba filtrando por active:false
+    // siempre que no se mandara el query param (como hace la pantalla de
+    // Agentes), así que los agentes recién creados nunca aparecían.
+    if (active !== 'all') where.active = active === undefined ? true : active === 'true';
     if (role)      where.role      = role;
     if (branch_id) where.branch_id = branch_id;
     if (search) {

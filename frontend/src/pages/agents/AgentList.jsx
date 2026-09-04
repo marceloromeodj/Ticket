@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, X, Check, Download, Upload } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
+import { useAuthStore } from '../../store/authStore';
 
 const ROLES = ['admin', 'supervisor', 'agent'];
 const ROLE_LABELS = { admin: 'Admin', supervisor: 'Supervisor', agent: 'Agente' };
@@ -11,7 +12,24 @@ const AVAIL_COLORS = { online: 'bg-green-400', busy: 'bg-amber-400', offline: 'b
 
 function AgentModal({ agent, onClose }) {
   const queryClient = useQueryClient();
+  const { user, activeCompanyId, setActiveCompany } = useAuthStore();
+  const isSuperAdmin = user?.role === 'super_admin';
   const isEdit = !!agent?.id;
+
+  // Solo super_admin: en qué empresa se crea/administra este agente. Es la
+  // misma selección que el switcher del Header — cambiarla acá cambia el
+  // contexto de toda la app, así el resto del formulario (sucursales) ya
+  // queda consultando la empresa correcta.
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies-switcher'],
+    queryFn: () => api.get('/companies').then(r => r.data?.companies || r.data || []),
+    enabled: isSuperAdmin,
+  });
+  const handleCompanyChange = (id) => {
+    setActiveCompany(id || null);
+    queryClient.invalidateQueries();
+  };
+
   const [form, setForm] = useState({
     name: agent?.name || '',
     email: agent?.email || '',
@@ -53,6 +71,23 @@ function AgentModal({ agent, onClose }) {
         </div>
         <form onSubmit={e => { e.preventDefault(); mutation.mutate(form); }} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            {isSuperAdmin && (
+              <div className="col-span-2">
+                <label className="label">Empresa *</label>
+                <select
+                  required
+                  className="input"
+                  value={activeCompanyId || ''}
+                  onChange={e => handleCompanyChange(e.target.value)}
+                >
+                  <option value="" disabled>Elegí una empresa...</option>
+                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  El agente se crea/administra dentro de esta empresa (misma selección que el switcher de arriba).
+                </p>
+              </div>
+            )}
             <div className="col-span-2">
               <label className="label">Nombre *</label>
               <input required className="input" value={form.name} onChange={e => set('name', e.target.value)} />
@@ -112,7 +147,7 @@ function AgentModal({ agent, onClose }) {
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
-            <button type="submit" disabled={mutation.isLoading} className="btn-primary">
+            <button type="submit" disabled={mutation.isLoading || (isSuperAdmin && !activeCompanyId)} className="btn-primary">
               {mutation.isLoading ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
