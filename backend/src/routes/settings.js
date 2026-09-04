@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const { Company, CustomField } = require('../models');
-const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'));
+// La configuración es de una empresa concreta.
+router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'), requireCompanySelected);
 
 // Configuración general de la empresa
 router.get('/', async (req, res, next) => {

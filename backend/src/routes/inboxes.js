@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const { EmailInbox } = require('../models');
-const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 const { emailService } = require('../services/emailService');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'));
+// Las bandejas de email son de una empresa concreta.
+router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'), requireCompanySelected);
 
 router.get('/', async (req, res, next) => {
   try {

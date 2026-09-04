@@ -1,13 +1,13 @@
 const router = require('express').Router();
 const ctrl   = require('../controllers/ticketController');
-const { authenticate, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 const { upload, verifyFileSignatures } = require('../middleware/upload');
 
 router.use(authenticate, tenantMiddleware);
 
 router.get   ('/',        ctrl.list);
-router.post  ('/',        ctrl.create);
-router.post  ('/bulk',    ctrl.bulkUpdate);
+router.post  ('/',        requireCompanySelected, ctrl.create);
+router.post  ('/bulk',    requireCompanySelected, ctrl.bulkUpdate);
 router.get   ('/:id',     ctrl.getOne);
 router.put   ('/:id',     ctrl.update);
 router.patch ('/:id',     ctrl.update);

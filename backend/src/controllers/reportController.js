@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize, Ticket, TicketMessage, User, Category } = require('../models');
 const moment = require('moment-timezone');
+const { companyScope } = require('../middleware/auth');
 
 // ─── Overview / Dashboard stats ─────────────────────────────────
 async function overview(req, res, next) {
@@ -10,7 +11,7 @@ async function overview(req, res, next) {
     const from_ = from ? moment.tz(from, tz).toDate() : moment.tz(tz).subtract(30, 'days').toDate();
     const to_   = to   ? moment.tz(to,   tz).toDate() : new Date();
 
-    const where = { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] } };
+    const where = { ...companyScope(req), created_at: { [Op.between]: [from_, to_] } };
     if (branch_id) where.branch_id = branch_id;
 
     const [
@@ -64,7 +65,7 @@ async function ticketsByDate(req, res, next) {
     const to_   = to   ? new Date(to)   : new Date();
 
     const dateTrunc = group_by === 'month' ? 'month' : group_by === 'week' ? 'week' : 'day';
-    const where = { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] } };
+    const where = { ...companyScope(req), created_at: { [Op.between]: [from_, to_] } };
     if (branch_id) where.branch_id = branch_id;
 
     const data = await Ticket.findAll({
@@ -91,7 +92,7 @@ async function agentPerformance(req, res, next) {
     const to_   = to   ? new Date(to)   : new Date();
 
     const where = {
-      company_id: req.companyId,
+      ...companyScope(req),
       agent_id:   { [Op.ne]: null },
       created_at: { [Op.between]: [from_, to_] },
     };
@@ -127,7 +128,7 @@ async function byCategory(req, res, next) {
     const to_   = to   ? new Date(to)   : new Date();
 
     const data = await Ticket.findAll({
-      where: { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] } },
+      where: { ...companyScope(req), created_at: { [Op.between]: [from_, to_] } },
       attributes: [
         'category_id',
         [fn('COUNT', col('Ticket.id')), 'total'],
@@ -149,9 +150,9 @@ async function slaReport(req, res, next) {
     const to_   = to   ? new Date(to)   : new Date();
 
     const [ok, warning, breached] = await Promise.all([
-      Ticket.count({ where: { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] }, sla_status: 'ok' } }),
-      Ticket.count({ where: { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] }, sla_status: 'warning' } }),
-      Ticket.count({ where: { company_id: req.companyId, created_at: { [Op.between]: [from_, to_] }, sla_status: 'breached' } }),
+      Ticket.count({ where: { ...companyScope(req), created_at: { [Op.between]: [from_, to_] }, sla_status: 'ok' } }),
+      Ticket.count({ where: { ...companyScope(req), created_at: { [Op.between]: [from_, to_] }, sla_status: 'warning' } }),
+      Ticket.count({ where: { ...companyScope(req), created_at: { [Op.between]: [from_, to_] }, sla_status: 'breached' } }),
     ]);
 
     const total = ok + warning + breached;

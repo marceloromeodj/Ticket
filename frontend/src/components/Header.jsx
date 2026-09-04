@@ -5,6 +5,7 @@ import { useNotificationStore } from '../store/notificationStore';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import CompanySwitcher from './CompanySwitcher';
 
 export default function Header() {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ export default function Header() {
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
+      <CompanySwitcher />
+
       {/* Search */}
       <form onSubmit={handleSearch} className="flex-1 max-w-md">
         <div className="relative">

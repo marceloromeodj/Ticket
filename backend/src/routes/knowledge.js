@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { KnowledgeArticle, Category } = require('../models');
-const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
 router.use(authenticate, tenantMiddleware);
@@ -8,7 +8,7 @@ router.use(authenticate, tenantMiddleware);
 router.get('/', async (req, res, next) => {
   try {
     const { search, status, category_id, visibility } = req.query;
-    const where = { company_id: req.companyId };
+    const where = { ...companyScope(req) };
     if (status)      where.status     = status;
     if (category_id) where.category_id = category_id;
     if (visibility)  where.visibility  = visibility;
@@ -23,7 +23,7 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', authorize('super_admin','admin','supervisor','agent'), async (req, res, next) => {
+router.post('/', authorize('super_admin','admin','supervisor','agent'), requireCompanySelected, async (req, res, next) => {
   try {
     const { title, summary, content, status, visibility, category_id, tags } = req.body;
     const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '').substring(0, 100) + '-' + Date.now();
@@ -38,7 +38,7 @@ router.post('/', authorize('super_admin','admin','supervisor','agent'), async (r
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!article) return res.status(404).json({ error: 'Artículo no encontrado' });
     await article.increment('views');
     res.json(article);
@@ -47,7 +47,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!article) return res.status(404).json({ error: 'Artículo no encontrado' });
     const allowed = ['title','summary','content','status','visibility','category_id','tags','meta_title','meta_desc'];
     const updates = {};
@@ -61,7 +61,7 @@ router.put('/:id', async (req, res, next) => {
 router.post('/:id/vote', async (req, res, next) => {
   try {
     const { helpful } = req.body;
-    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!article) return res.status(404).json({ error: 'Artículo no encontrado' });
     if (helpful) await article.increment('helpful');
     else         await article.increment('not_helpful');
@@ -71,7 +71,7 @@ router.post('/:id/vote', async (req, res, next) => {
 
 router.delete('/:id', authorize('super_admin','admin'), async (req, res, next) => {
   try {
-    await KnowledgeArticle.update({ status: 'archived' }, { where: { id: req.params.id, company_id: req.companyId } });
+    await KnowledgeArticle.update({ status: 'archived' }, { where: { id: req.params.id, ...companyScope(req) } });
     res.json({ message: 'Artículo archivado' });
   } catch (err) { next(err); }
 });

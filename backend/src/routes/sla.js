@@ -1,8 +1,10 @@
 const router = require('express').Router();
 const { SLAPolicy } = require('../models');
-const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 
-router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'));
+// Las políticas de SLA son de una empresa concreta: un super_admin sin
+// empresa seleccionada no tiene "todas las políticas" que tenga sentido ver.
+router.use(authenticate, tenantMiddleware, authorize('super_admin','admin'), requireCompanySelected);
 
 router.get('/', async (req, res, next) => {
   try {

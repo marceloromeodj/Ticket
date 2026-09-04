@@ -1,10 +1,11 @@
 const router = require('express').Router();
 const { sequelize, ChatSession, ChatMessage, Ticket } = require('../models');
-const { authenticate, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 const { emitToTicket } = require('../config/socket');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
 
-router.use(authenticate, tenantMiddleware);
+// El chat en vivo es de una empresa concreta.
+router.use(authenticate, tenantMiddleware, requireCompanySelected);
 
 // Listar sesiones de chat activas
 router.get('/sessions', async (req, res, next) => {

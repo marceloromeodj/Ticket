@@ -77,4 +77,30 @@ function tenantMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, authorize, adminOrSuperAdmin, tenantMiddleware };
+/**
+ * Condición de empresa a usar en un `where` de Sequelize. Si el usuario
+ * (o el super_admin, vía X-Company-ID) tiene una empresa activa, filtra
+ * por ella. Si un super_admin no eligió ninguna (vista global), no
+ * filtra. Cualquier otro caso sin company_id no debería ocurrir, pero
+ * por seguridad no devuelve resultados en vez de romper la query con un
+ * `undefined` en el where.
+ */
+function companyScope(req) {
+  if (req.companyId) return { company_id: req.companyId };
+  if (req.user?.role === 'super_admin') return {};
+  return { company_id: '00000000-0000-0000-0000-000000000000' };
+}
+
+/**
+ * Para creación de registros: un super_admin sin empresa seleccionada
+ * (vista global) no puede crear un agente/sucursal/categoría/etc. porque
+ * esos registros necesitan pertenecer a una empresa concreta.
+ */
+function requireCompanySelected(req, res, next) {
+  if (!req.companyId) {
+    return res.status(400).json({ error: 'Seleccioná una empresa antes de crear este registro' });
+  }
+  next();
+}
+
+module.exports = { authenticate, authorize, adminOrSuperAdmin, tenantMiddleware, companyScope, requireCompanySelected };

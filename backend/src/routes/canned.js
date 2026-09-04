@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const { CannedResponse } = require('../models');
-const { authenticate, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
-router.use(authenticate, tenantMiddleware);
+// Las respuestas rápidas son de una empresa concreta.
+router.use(authenticate, tenantMiddleware, requireCompanySelected);
 
 router.get('/', async (req, res, next) => {
   try {

@@ -6,6 +6,7 @@ const { automationService }  = require('../services/automationService');
 const { notificationService } = require('../services/notificationService');
 const { storageService }     = require('../services/storageService');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+const { companyScope }       = require('../middleware/auth');
 
 // Reemplaza la URL pública guardada por una URL firmada de corta duración,
 // generada recién ahora que ya se validó que el usuario tiene acceso al
@@ -43,16 +44,10 @@ async function list(req, res, next) {
       branch_id, from_date, to_date, sla_status, tag_id,
     } = req.query;
 
-    // Solo un super_admin puede ver tickets de todas las empresas (sin
-    // header X-Company-ID). Cualquier otro rol sin company_id no debe
-    // recibir resultados de otras empresas.
-    const where = { company_id: req.companyId };
-    if (!where.company_id) {
-      if (req.user.role !== 'super_admin') {
-        return res.json({ data: [], meta: { total: 0, page: 1, limit: parseInt(limit), pages: 0 } });
-      }
-      delete where.company_id;
-    }
+    // Solo un super_admin sin empresa seleccionada ve tickets de todas las
+    // empresas; cualquier otro rol sin company_id no debe recibir
+    // resultados (ver companyScope en middleware/auth.js).
+    const where = { ...companyScope(req) };
 
     // Filtros de sucursal (agentes ven solo su sucursal si no son admin)
     if (req.user.role === 'agent' && req.branchId) {
@@ -108,7 +103,7 @@ async function list(req, res, next) {
 async function getOne(req, res, next) {
   try {
     const ticket = await Ticket.findOne({
-      where: { id: req.params.id, company_id: req.companyId },
+      where: { id: req.params.id, ...companyScope(req) },
       include: [
         { model: User,       as: 'agent',     attributes: ['id','name','avatar_url','email'] },
         { model: User,       as: 'requester', attributes: ['id','name','email','phone'] },
@@ -224,7 +219,7 @@ async function create(req, res, next) {
 // ─── Actualizar ticket ───────────────────────────────────────────
 async function update(req, res, next) {
   try {
-    const ticket = await Ticket.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const ticket = await Ticket.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
 
     const prev = ticket.toJSON();
@@ -237,7 +232,10 @@ async function update(req, res, next) {
     const changes = {};
     updatable.forEach(f => { if (req.body[f] !== undefined) changes[f] = req.body[f]; });
 
-    if (changes.agent_id && !(await isAgentInCompany(changes.agent_id, req.companyId))) {
+    // Se valida contra la empresa real del ticket (no req.companyId): un
+    // super_admin sin empresa seleccionada puede llegar acá con
+    // req.companyId vacío, pero el ticket sí pertenece a una empresa concreta.
+    if (changes.agent_id && !(await isAgentInCompany(changes.agent_id, ticket.company_id))) {
       return res.status(400).json({ error: 'El agente no pertenece a esta empresa' });
     }
 
@@ -280,8 +278,8 @@ async function update(req, res, next) {
       ],
     });
 
-    emitToCompany(req.companyId, 'ticket:updated', fullTicket);
-    emitToTicket(ticket.id,      'ticket:updated', fullTicket);
+    emitToCompany(ticket.company_id, 'ticket:updated', fullTicket);
+    emitToTicket(ticket.id,          'ticket:updated', fullTicket);
 
     automationService.run('ticket_updated', fullTicket, req.user);
 
@@ -305,7 +303,7 @@ async function addMessage(req, res, next) {
   try {
     const { content, message_type = 'reply', is_private = false, mentions = [] } = req.body;
 
-    const ticket = await Ticket.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const ticket = await Ticket.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
 
     const message = await TicketMessage.create({
@@ -358,7 +356,7 @@ async function addMessage(req, res, next) {
     const fullMessageJson = await withSignedAttachments(fullMessage.toJSON());
 
     emitToTicket(ticket.id, 'message:new', fullMessageJson);
-    emitToCompany(req.companyId, 'ticket:updated', { id: ticket.id, reply_count: updates.reply_count });
+    emitToCompany(ticket.company_id, 'ticket:updated', { id: ticket.id, reply_count: updates.reply_count });
 
     // Notificar a todos los involucrados
     notificationService.notifyTicketReply(ticket, message, req.user);
@@ -373,7 +371,7 @@ async function getMessages(req, res, next) {
     // Verificar primero que el ticket pertenezca a la empresa del usuario:
     // sin este chequeo, cualquier usuario autenticado podía leer mensajes
     // (incluidas notas privadas) de tickets de otra empresa conociendo el UUID.
-    const ticket = await Ticket.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const ticket = await Ticket.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!ticket) return res.status(404).json({ error: 'Ticket no encontrado' });
 
     const { include_private = false } = req.query;
@@ -399,7 +397,7 @@ async function bulkUpdate(req, res, next) {
     const { ticket_ids, action, value } = req.body;
     if (!ticket_ids?.length) return res.status(400).json({ error: 'ticket_ids requerido' });
 
-    const where = { id: { [Op.in]: ticket_ids }, company_id: req.companyId };
+    const where = { id: { [Op.in]: ticket_ids }, ...companyScope(req) };
 
     if (action === 'assign' && !(await isAgentInCompany(value, req.companyId))) {
       return res.status(400).json({ error: 'El agente no pertenece a esta empresa' });

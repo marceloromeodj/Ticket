@@ -5,24 +5,40 @@ import api from '../api/axios';
 export const useAuthStore = create(
   persist(
     (set, get) => ({
-      user:          null,
-      token:         null,
-      refresh_token: null,
-      isLoading:     false,
+      user:            null,
+      token:           null,
+      refresh_token:   null,
+      isLoading:       false,
+      // Empresa que el super_admin eligió administrar (null = vista global,
+      // agregada entre todas las empresas). Para el resto de los roles
+      // coincide siempre con user.company.id.
+      activeCompanyId: null,
 
       login: async (email, password, company_slug) => {
         set({ isLoading: true });
         try {
           const { data } = await api.post('/auth/login', { email, password, company_slug });
+          const companyId = data.user.company?.id || null;
           localStorage.setItem('token',         data.token);
           localStorage.setItem('refresh_token', data.refresh_token);
-          localStorage.setItem('company_id',    data.user.company?.id || '');
-          set({ user: data.user, token: data.token, refresh_token: data.refresh_token, isLoading: false });
+          localStorage.setItem('company_id',    companyId || '');
+          set({
+            user: data.user, token: data.token, refresh_token: data.refresh_token,
+            activeCompanyId: companyId, isLoading: false,
+          });
           return { ok: true };
         } catch (err) {
           set({ isLoading: false });
           return { ok: false, error: err.response?.data?.error || 'Error de autenticación' };
         }
+      },
+
+      // Solo tiene efecto real para super_admin: cambia qué empresa ven las
+      // pantallas de administración (vía header X-Company-ID, ver
+      // api/axios.js).
+      setActiveCompany: (companyId) => {
+        localStorage.setItem('company_id', companyId || '');
+        set({ activeCompanyId: companyId || null });
       },
 
       logout: () => {
@@ -50,7 +66,7 @@ export const useAuthStore = create(
     }),
     {
       name: 'helpdesk-auth',
-      partialize: (s) => ({ user: s.user, token: s.token, refresh_token: s.refresh_token }),
+      partialize: (s) => ({ user: s.user, token: s.token, refresh_token: s.refresh_token, activeCompanyId: s.activeCompanyId }),
     }
   )
 );

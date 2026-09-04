@@ -3,7 +3,7 @@ const multer = require('multer');
 const crypto = require('crypto');
 const { parse } = require('csv-parse/sync');
 const { User, Branch } = require('../models');
-const { authenticate, authorize, tenantMiddleware } = require('../middleware/auth');
+const { authenticate, authorize, tenantMiddleware, companyScope, requireCompanySelected } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
 router.use(authenticate, tenantMiddleware);
@@ -74,7 +74,7 @@ router.get('/csv-template', authorize('super_admin', 'admin'), (req, res) => {
 // respuesta para que el admin se la pase al agente. "rol" acepta admin,
 // supervisor o agent (default: agent); "sucursal" se busca por nombre
 // dentro de la misma empresa.
-router.post('/import', authorize('super_admin', 'admin'), csvUpload.single('file'), async (req, res, next) => {
+router.post('/import', authorize('super_admin', 'admin'), requireCompanySelected, csvUpload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Archivo CSV requerido' });
 
@@ -149,7 +149,7 @@ router.get('/', async (req, res, next) => {
   try {
     const { search, role, branch_id, active = true } = req.query;
     const where = {
-      company_id: req.companyId,
+      ...companyScope(req),
       role: { [Op.in]: ['admin', 'supervisor', 'agent'] },
     };
     if (active !== 'all') where.active = active === 'true';
@@ -172,7 +172,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // Crear agente
-router.post('/', authorize('super_admin','admin'), async (req, res, next) => {
+router.post('/', authorize('super_admin','admin'), requireCompanySelected, async (req, res, next) => {
   try {
     const { name, email, password, role = 'agent', branch_id, groups = [] } = req.body;
     const existing = await User.findOne({ where: { email: email.toLowerCase(), company_id: req.companyId } });
@@ -189,7 +189,7 @@ router.post('/', authorize('super_admin','admin'), async (req, res, next) => {
 // Obtener agente
 router.get('/:id', async (req, res, next) => {
   try {
-    const agent = await User.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
     res.json(agent);
   } catch (err) { next(err); }
@@ -198,7 +198,7 @@ router.get('/:id', async (req, res, next) => {
 // Actualizar agente
 router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
   try {
-    const agent = await User.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
 
     const allowed = ['name','role','branch_id','groups','active','phone','notification_preferences'];
@@ -214,7 +214,7 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
 // Eliminar (desactivar) agente
 router.delete('/:id', authorize('super_admin','admin'), async (req, res, next) => {
   try {
-    const agent = await User.findOne({ where: { id: req.params.id, company_id: req.companyId } });
+    const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
     await agent.update({ active: false });
     res.json({ message: 'Agente desactivado' });
