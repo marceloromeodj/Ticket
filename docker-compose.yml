@@ -108,6 +108,12 @@ services:
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@helpdesk.local}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?Definí SUPER_ADMIN_PASSWORD en .env}
       SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
+      # Cifrado de secretos en base (contraseñas IMAP/SMTP).
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Definí ENCRYPTION_KEY en .env (openssl rand -hex 32)}
+      # SSO opcional (Google Workspace / Microsoft) -- vacío = botón oculto.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
     volumes:
       - uploads_data:/app/uploads
     networks:
