@@ -20,6 +20,10 @@ const PRIORITY_COLORS = {
   low: 'badge-low', medium: 'badge-medium', high: 'badge-high', urgent: 'badge-urgent',
 };
 const PRIORITY_LABELS = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
+const TYPE_LABELS = {
+  question: 'Pregunta', incident: 'Incidente', problem: 'Problema',
+  task: 'Tarea', feature_request: 'Solicitud',
+};
 
 function Badge({ type, value, map, colorMap }) {
   return (
@@ -38,6 +42,7 @@ export default function TicketList() {
   const filters = {
     status: searchParams.get('status') || '',
     priority: searchParams.get('priority') || '',
+    type: searchParams.get('type') || '',
     search: searchParams.get('search') || '',
     page: parseInt(searchParams.get('page') || '1'),
     sort: searchParams.get('sort') || 'created_at',
@@ -59,17 +64,19 @@ export default function TicketList() {
   });
 
   const bulkMutation = useMutation({
-    mutationFn: ({ ids, updates }) => api.post('/tickets/bulk', { ids, updates }),
+    mutationFn: (payload) => api.post('/tickets/bulk', payload),
     onSuccess: () => {
       queryClient.invalidateQueries(['tickets']);
       setSelected([]);
       toast.success('Tickets actualizados');
     },
+    onError: (e) => toast.error(e.response?.data?.error || 'Error al actualizar'),
   });
 
-  const tickets = data?.tickets || [];
-  const total = data?.total || 0;
-  const pages = Math.ceil(total / (data?.limit || 25));
+  // La API responde { data, meta: { total, limit, pages } }, no { tickets, total, limit }.
+  const tickets = data?.data || [];
+  const total = data?.meta?.total || 0;
+  const pages = data?.meta?.pages || 0;
 
   const toggleSelect = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const toggleAll = () => setSelected(selected.length === tickets.length ? [] : tickets.map(t => t.id));
@@ -145,7 +152,7 @@ export default function TicketList() {
 
       {/* Expanded filters */}
       {showFilters && (
-        <div className="card p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="card p-4 grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="label text-xs">Prioridad</label>
             <select className="input h-8 text-sm" value={filters.priority} onChange={e => setFilter('priority', e.target.value)}>
@@ -158,6 +165,13 @@ export default function TicketList() {
             <select className="input h-8 text-sm" value={filters.status} onChange={e => setFilter('status', e.target.value)}>
               <option value="">Todos</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label text-xs">Tipo</label>
+            <select className="input h-8 text-sm" value={filters.type} onChange={e => setFilter('type', e.target.value)}>
+              <option value="">Todos</option>
+              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
           <div>
@@ -189,14 +203,14 @@ export default function TicketList() {
             {[['open','Abrir'],['resolved','Resolver'],['closed','Cerrar']].map(([s, label]) => (
               <button
                 key={s}
-                onClick={() => bulkMutation.mutate({ ids: selected, updates: { status: s } })}
+                onClick={() => bulkMutation.mutate({ ticket_ids: selected, action: 'status', value: s })}
                 className="btn-ghost h-7 text-xs"
               >
                 {label}
               </button>
             ))}
             <button
-              onClick={() => bulkMutation.mutate({ ids: selected, updates: { spam: true } })}
+              onClick={() => bulkMutation.mutate({ ticket_ids: selected, action: 'spam' })}
               className="btn-danger h-7 text-xs"
             >
               <Trash2 size={12} /> Marcar spam
@@ -231,6 +245,7 @@ export default function TicketList() {
                 </th>
                 <th className="py-3 px-2 font-medium text-gray-500 text-xs uppercase tracking-wide">Estado</th>
                 <th className="py-3 px-2 font-medium text-gray-500 text-xs uppercase tracking-wide">Prioridad</th>
+                <th className="py-3 px-2 font-medium text-gray-500 text-xs uppercase tracking-wide">Tipo</th>
                 <th className="py-3 px-2 font-medium text-gray-500 text-xs uppercase tracking-wide">Agente</th>
                 <th className="py-3 px-2 font-medium text-gray-500 text-xs uppercase tracking-wide">
                   <button className="flex items-center gap-1" onClick={() => sortToggle('created_at')}>
@@ -242,10 +257,10 @@ export default function TicketList() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {isLoading && (
-                <tr><td colSpan={8} className="py-12 text-center text-gray-400">Cargando...</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-gray-400">Cargando...</td></tr>
               )}
               {!isLoading && tickets.length === 0 && (
-                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No hay tickets</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-gray-400">No hay tickets</td></tr>
               )}
               {tickets.map(ticket => (
                 <tr
@@ -283,6 +298,9 @@ export default function TicketList() {
                   </td>
                   <td className="py-3 px-2">
                     <Badge value={ticket.priority} map={PRIORITY_LABELS} colorMap={PRIORITY_COLORS} />
+                  </td>
+                  <td className="py-3 px-2 text-xs text-gray-600">
+                    {TYPE_LABELS[ticket.type] || ticket.type}
                   </td>
                   <td className="py-3 px-2">
                     {ticket.agent ? (

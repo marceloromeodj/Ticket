@@ -45,7 +45,7 @@ async function isAgentInCompany(agentId, companyId) {
 async function list(req, res, next) {
   try {
     const {
-      status, priority, agent_id, category_id, source,
+      status, priority, type, agent_id, category_id, source,
       search, page = 1, limit = 25,
       sort_by = 'created_at', sort_dir = 'DESC',
       branch_id, from_date, to_date, sla_status, tag_id,
@@ -67,6 +67,7 @@ async function list(req, res, next) {
 
     if (status)      where.status      = status.includes(',') ? { [Op.in]: status.split(',') } : status;
     if (priority)    where.priority    = priority.includes(',') ? { [Op.in]: priority.split(',') } : priority;
+    if (type)        where.type        = type.includes(',') ? { [Op.in]: type.split(',') } : type;
     if (agent_id)    where.agent_id    = agent_id === 'me' ? req.user.id : agent_id;
     if (category_id) where.category_id = category_id;
     if (source)      where.source      = source;

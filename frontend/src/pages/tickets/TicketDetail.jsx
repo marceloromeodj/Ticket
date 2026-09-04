@@ -19,6 +19,10 @@ const STATUS_LABELS = {
   waiting_customer: 'Esperando cliente', resolved: 'Resuelto', closed: 'Cerrado',
 };
 const PRIORITY_LABELS = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
+const TYPE_LABELS = {
+  question: 'Pregunta', incident: 'Incidente', problem: 'Problema',
+  task: 'Tarea', feature_request: 'Solicitud de función',
+};
 
 function Avatar({ name, size = 8 }) {
   return (
@@ -232,6 +236,13 @@ export default function TicketDetail() {
             className="input h-8 text-sm"
           >
             {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select
+            value={ticket.type}
+            onChange={e => updateMutation.mutate({ type: e.target.value })}
+            className="input h-8 text-sm"
+          >
+            {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
       </div>
