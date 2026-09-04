@@ -19,6 +19,9 @@ function AgentModal({ agent, onClose }) {
     role: agent?.role || 'agent',
     phone: agent?.phone || '',
     branch_id: agent?.branch_id || '',
+    // Sucursales además de la principal — un agente puede pertenecer a
+    // varias si la empresa tiene más de una.
+    branch_ids: (agent?.branches || []).map(b => b.id).filter(id => id !== agent?.branch_id),
   });
 
   const { data: branches = [] } = useQuery({
@@ -27,7 +30,10 @@ function AgentModal({ agent, onClose }) {
   });
 
   const mutation = useMutation({
-    mutationFn: (data) => isEdit ? api.put(`/agents/${agent.id}`, data) : api.post('/agents', data),
+    mutationFn: (data) => {
+      const payload = { ...data, branch_ids: data.branch_ids.filter(id => id !== data.branch_id) };
+      return isEdit ? api.put(`/agents/${agent.id}`, payload) : api.post('/agents', payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['agents']);
       toast.success(isEdit ? 'Agente actualizado' : 'Agente creado');
@@ -72,7 +78,7 @@ function AgentModal({ agent, onClose }) {
               </select>
             </div>
             <div>
-              <label className="label">Sucursal</label>
+              <label className="label">Sucursal principal</label>
               <select className="input" value={form.branch_id} onChange={e => set('branch_id', e.target.value)}>
                 <option value="">Todas</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -82,6 +88,27 @@ function AgentModal({ agent, onClose }) {
               <label className="label">Teléfono</label>
               <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
             </div>
+            {branches.filter(b => b.id !== form.branch_id).length > 0 && (
+              <div className="col-span-2">
+                <label className="label">Sucursales adicionales</label>
+                <div className="border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
+                  {branches.filter(b => b.id !== form.branch_id).map(b => (
+                    <label key={b.id} className="flex items-center gap-2 text-sm cursor-pointer px-1 py-0.5 hover:bg-gray-50 rounded">
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={form.branch_ids.includes(b.id)}
+                        onChange={e => set('branch_ids', e.target.checked
+                          ? [...form.branch_ids, b.id]
+                          : form.branch_ids.filter(id => id !== b.id))}
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">El agente va a ver también los tickets de estas sucursales.</p>
+              </div>
+            )}
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
@@ -293,7 +320,12 @@ export default function AgentList() {
                 <td className="px-4 py-3">
                   <span className="badge badge-pending capitalize">{ROLE_LABELS[a.role] || a.role}</span>
                 </td>
-                <td className="px-4 py-3 text-gray-600 text-xs">{a.branch?.name || '—'}</td>
+                <td className="px-4 py-3 text-gray-600 text-xs">
+                  {a.branch?.name || '—'}
+                  {a.branches?.length > 1 && (
+                    <span className="text-gray-400"> (+{a.branches.length - 1})</span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className="capitalize text-xs text-gray-500">{a.availability}</span>
                 </td>

@@ -15,9 +15,13 @@ async function authenticate(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Verificar que el usuario aún existe y está activo
+    // Verificar que el usuario aún existe y está activo. Se incluyen las
+    // sucursales adicionales (más allá de branch_id, la "principal") para
+    // que los agentes con acceso a varias sucursales vean los tickets de
+    // todas ellas, no solo de la principal.
     const user = await User.findOne({
       where: { id: decoded.id, active: true },
+      include: [{ association: 'branches', attributes: ['id'] }],
     });
 
     if (!user) {
@@ -32,9 +36,16 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'Sesión inválida, iniciá sesión nuevamente', code: 'TOKEN_EXPIRED' });
     }
 
+    // req.branchId sigue siendo la sucursal principal (compatibilidad con
+    // el resto del código: asignación por defecto de tickets, etc.).
+    // req.branchIds es la lista completa de sucursales a las que el
+    // usuario tiene acceso (principal + adicionales vía user_branches),
+    // usada para filtrar qué tickets puede ver un agente.
+    const extraBranchIds = (user.branches || []).map(b => b.id);
     req.user = user;
     req.companyId = user.company_id;
     req.branchId  = user.branch_id;
+    req.branchIds = Array.from(new Set([user.branch_id, ...extraBranchIds].filter(Boolean)));
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

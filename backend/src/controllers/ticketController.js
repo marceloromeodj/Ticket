@@ -56,9 +56,11 @@ async function list(req, res, next) {
     // resultados (ver companyScope en middleware/auth.js).
     const where = { ...companyScope(req) };
 
-    // Filtros de sucursal (agentes ven solo su sucursal si no son admin)
-    if (req.user.role === 'agent' && req.branchId) {
-      where.branch_id = req.branchId;
+    // Filtros de sucursal (un agente ve tickets de todas las sucursales a
+    // las que pertenece, no solo la principal; ver req.branchIds en
+    // middleware/auth.js)
+    if (req.user.role === 'agent' && req.branchIds?.length) {
+      where.branch_id = { [Op.in]: req.branchIds };
     } else if (branch_id) {
       where.branch_id = branch_id;
     }

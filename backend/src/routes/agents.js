@@ -165,16 +165,27 @@ router.get('/', async (req, res, next) => {
     const agents = await User.findAll({
       where,
       attributes: ['id','name','email','role','avatar_url','availability','branch_id','groups','active'],
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id','name'] },
+        { association: 'branches', attributes: ['id','name'], through: { attributes: [] } },
+      ],
       order: [['name', 'ASC']],
     });
     res.json({ agents });
   } catch (err) { next(err); }
 });
 
+// Junta la sucursal principal (branch_id) con las adicionales elegidas en
+// branch_ids, sin duplicados, para que la tabla user_branches sea siempre
+// la fuente completa de "a qué sucursales tiene acceso este agente".
+function resolveBranchIds(branch_id, branch_ids) {
+  return Array.from(new Set([branch_id, ...(Array.isArray(branch_ids) ? branch_ids : [])].filter(Boolean)));
+}
+
 // Crear agente
 router.post('/', authorize('super_admin','admin'), requireCompanySelected, async (req, res, next) => {
   try {
-    const { name, email, password, role = 'agent', branch_id, groups = [] } = req.body;
+    const { name, email, password, role = 'agent', branch_id, branch_ids, groups = [] } = req.body;
     const existing = await User.findOne({ where: { email: email.toLowerCase(), company_id: req.companyId } });
     if (existing) return res.status(400).json({ error: 'El email ya existe en esta empresa' });
 
@@ -182,14 +193,28 @@ router.post('/', authorize('super_admin','admin'), requireCompanySelected, async
       name, email: email.toLowerCase(), password, role,
       company_id: req.companyId, branch_id: branch_id || null, groups,
     });
-    res.status(201).json(agent);
+    await agent.setBranches(resolveBranchIds(branch_id, branch_ids));
+
+    const fullAgent = await User.findByPk(agent.id, {
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id','name'] },
+        { association: 'branches', attributes: ['id','name'], through: { attributes: [] } },
+      ],
+    });
+    res.status(201).json(fullAgent);
   } catch (err) { next(err); }
 });
 
 // Obtener agente
 router.get('/:id', async (req, res, next) => {
   try {
-    const agent = await User.findOne({ where: { id: req.params.id, ...companyScope(req) } });
+    const agent = await User.findOne({
+      where: { id: req.params.id, ...companyScope(req) },
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id','name'] },
+        { association: 'branches', attributes: ['id','name'], through: { attributes: [] } },
+      ],
+    });
     if (!agent) return res.status(404).json({ error: 'Agente no encontrado' });
     res.json(agent);
   } catch (err) { next(err); }
@@ -208,7 +233,17 @@ router.put('/:id', authorize('super_admin','admin'), async (req, res, next) => {
     if (req.body.password) updates.password = req.body.password;
 
     await agent.update(updates);
-    res.json(agent);
+    if (req.body.branch_ids !== undefined || req.body.branch_id !== undefined) {
+      await agent.setBranches(resolveBranchIds(agent.branch_id, req.body.branch_ids));
+    }
+
+    const fullAgent = await User.findByPk(agent.id, {
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id','name'] },
+        { association: 'branches', attributes: ['id','name'], through: { attributes: [] } },
+      ],
+    });
+    res.json(fullAgent);
   } catch (err) { next(err); }
 });
 

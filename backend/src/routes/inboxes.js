@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { EmailInbox } = require('../models');
+const { EmailInbox, Branch } = require('../models');
 const { authenticate, authorize, tenantMiddleware, requireCompanySelected } = require('../middleware/auth');
 const { emailService } = require('../services/emailService');
 
@@ -11,6 +11,8 @@ router.get('/', async (req, res, next) => {
     const inboxes = await EmailInbox.findAll({
       where: { company_id: req.companyId },
       attributes: { exclude: ['imap_pass','smtp_pass'] },
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+      order: [['name', 'ASC']],
     });
     res.json(inboxes);
   } catch (err) { next(err); }

@@ -20,6 +20,7 @@ const EmailInbox       = require('./EmailInbox')(sequelize);
 const ChatSession      = require('./ChatSession')(sequelize);
 const ChatMessage      = require('./ChatMessage')(sequelize);
 const CustomField      = require('./CustomField')(sequelize);
+const UserBranch       = require('./UserBranch')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -43,7 +44,13 @@ Branch.hasMany(EmailInbox,{ foreignKey: 'branch_id',  as: 'emailInboxes' });
 
 // User
 User.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+// branch_id sigue siendo la sucursal "principal" (usada en el JWT y para
+// asignar sucursal por defecto a tickets creados por este agente); un
+// agente puede además pertenecer a otras sucursales vía la tabla
+// intermedia user_branches (ver companyScope de sucursales en tickets).
 User.belongsTo(Branch,  { foreignKey: 'branch_id',  as: 'branch' });
+User.belongsToMany(Branch, { through: UserBranch, foreignKey: 'user_id', otherKey: 'branch_id', as: 'branches' });
+Branch.belongsToMany(User, { through: UserBranch, foreignKey: 'branch_id', otherKey: 'user_id', as: 'agents' });
 User.hasMany(Ticket,    { foreignKey: 'agent_id',   as: 'assignedTickets' });
 User.hasMany(Ticket,    { foreignKey: 'requester_id', as: 'requestedTickets' });
 User.hasMany(TicketMessage, { foreignKey: 'user_id', as: 'messages' });
@@ -127,7 +134,7 @@ CustomField.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 const allModels = [
   Company, Branch, User, Ticket, TicketMessage, TicketAttachment, Category,
   Tag, TicketTag, SLAPolicy, AutomationRule, KnowledgeArticle, CannedResponse,
-  Notification, EmailInbox, ChatSession, ChatMessage, CustomField,
+  Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
 ];
 allModels.forEach((model) => {
   const uuidAttrs = Object.entries(model.rawAttributes)
@@ -162,4 +169,5 @@ module.exports = {
   ChatSession,
   ChatMessage,
   CustomField,
+  UserBranch,
 };
