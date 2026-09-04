@@ -16,11 +16,11 @@ const STATUS_LABELS = { open: 'Abiertos', pending: 'Pendientes', resolved: 'Resu
 const TABS = ['Resumen', 'Por Período', 'Agentes', 'Por Categoría', 'SLA', 'Satisfacción'];
 const EXPORT_TYPE_BY_TAB = { 'Resumen': 'overview', 'Agentes': 'agent_performance', 'SLA': 'sla', 'Satisfacción': 'satisfaction' };
 
-function exportReport(type) {
-  api.get(`/reports/${type}/export`, { responseType: 'blob' }).then(res => {
+function exportReport(type, format = 'excel') {
+  api.get(`/reports/${type}/export`, { params: { format }, responseType: 'blob' }).then(res => {
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const a = document.createElement('a');
-    a.href = url; a.download = `reporte-${type}.xlsx`;
+    a.href = url; a.download = `reporte-${type}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
     document.body.appendChild(a); a.click(); a.remove();
     window.URL.revokeObjectURL(url);
   });
@@ -88,9 +88,14 @@ export default function Reports() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
         {EXPORT_TYPE_BY_TAB[tab] && (
-          <button onClick={() => exportReport(EXPORT_TYPE_BY_TAB[tab])} className="btn-ghost text-sm">
-            <Download size={14} /> Exportar a Excel
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => exportReport(EXPORT_TYPE_BY_TAB[tab], 'excel')} className="btn-ghost text-sm">
+              <Download size={14} /> Excel
+            </button>
+            <button onClick={() => exportReport(EXPORT_TYPE_BY_TAB[tab], 'pdf')} className="btn-ghost text-sm">
+              <Download size={14} /> PDF
+            </button>
+          </div>
         )}
       </div>
 
@@ -353,7 +358,7 @@ export default function Reports() {
       {/* Satisfacción (CSAT) */}
       {tab === 'Satisfacción' && (
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="card p-5 border-l-4 border-amber-400">
               <p className="text-sm text-gray-500">Calificación promedio</p>
               <p className="text-3xl font-bold text-gray-900 mt-1 flex items-center gap-2">
@@ -368,6 +373,10 @@ export default function Reports() {
             <div className="card p-5 border-l-4 border-red-500">
               <p className="text-sm text-gray-500">Insatisfechos (1-2 estrellas)</p>
               <p className="text-3xl font-bold text-red-600 mt-1">{satisfaction?.detractor_pct ?? '—'}%</p>
+            </div>
+            <div className="card p-5 border-l-4 border-primary-500">
+              <p className="text-sm text-gray-500">NPS ({satisfaction?.nps_responses ?? 0} resp.)</p>
+              <p className="text-3xl font-bold text-primary-600 mt-1">{satisfaction?.nps_score ?? '—'}</p>
             </div>
           </div>
 

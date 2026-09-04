@@ -32,6 +32,9 @@ const MaintenancePlan  = require('./MaintenancePlan')(sequelize);
 const MaintenanceLog   = require('./MaintenanceLog')(sequelize);
 const NotificationChannel = require('./NotificationChannel')(sequelize);
 const ScheduledReport  = require('./ScheduledReport')(sequelize);
+const Vendor           = require('./Vendor')(sequelize);
+const Contract         = require('./Contract')(sequelize);
+const ApiToken         = require('./ApiToken')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -190,6 +193,21 @@ NotificationChannel.belongsTo(Company, { foreignKey: 'company_id', as: 'company'
 Company.hasMany(ScheduledReport, { foreignKey: 'company_id', as: 'scheduledReports' });
 ScheduledReport.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
+// ─── Contratos, licencias y proveedores ───────────────────────────
+Company.hasMany(Vendor, { foreignKey: 'company_id', as: 'vendors' });
+Vendor.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+Vendor.hasMany(Contract, { foreignKey: 'vendor_id', as: 'contracts' });
+Contract.belongsTo(Vendor, { foreignKey: 'vendor_id', as: 'vendor' });
+Company.hasMany(Contract, { foreignKey: 'company_id', as: 'contracts' });
+Contract.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+Asset.hasMany(Contract, { foreignKey: 'asset_id', as: 'contracts' });
+Contract.belongsTo(Asset, { foreignKey: 'asset_id', as: 'asset' });
+
+// ─── Tokens de API (integraciones externas) ───────────────────────
+Company.hasMany(ApiToken, { foreignKey: 'company_id', as: 'apiTokens' });
+ApiToken.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+ApiToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
 // ─── Normalización de UUIDs vacíos ─────────────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
 // "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
@@ -203,6 +221,7 @@ const allModels = [
   Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
   Asset, TicketAsset, Problem, ChangeRequest, TicketSurvey, AuditLog,
   Service, MaintenancePlan, MaintenanceLog, NotificationChannel, ScheduledReport,
+  Vendor, Contract, ApiToken,
 ];
 allModels.forEach((model) => {
   const uuidAttrs = Object.entries(model.rawAttributes)
@@ -249,4 +268,7 @@ module.exports = {
   MaintenanceLog,
   NotificationChannel,
   ScheduledReport,
+  Vendor,
+  Contract,
+  ApiToken,
 };

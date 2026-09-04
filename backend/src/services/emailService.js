@@ -3,6 +3,7 @@ const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const { sequelize, EmailInbox, Ticket, TicketMessage, Company } = require('../models');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+const { decrypt } = require('../utils/crypto');
 
 // Transporte por defecto (se sobreescribe por bandeja de entrada)
 function createTransport(inbox) {
@@ -10,7 +11,7 @@ function createTransport(inbox) {
     host: inbox.smtp_host,
     port: inbox.smtp_port,
     secure: inbox.smtp_port === 465,
-    auth: { user: inbox.smtp_user, pass: inbox.smtp_pass },
+    auth: { user: inbox.smtp_user, pass: decrypt(inbox.smtp_pass) },
     tls: { rejectUnauthorized: false },
   });
 }
@@ -93,7 +94,7 @@ const emailService = {
     return new Promise((resolve, reject) => {
       const imap = new Imap({
         user:     inbox.imap_user,
-        password: inbox.imap_pass,
+        password: decrypt(inbox.imap_pass),
         host:     inbox.imap_host,
         port:     inbox.imap_port,
         tls:      inbox.imap_use_ssl,

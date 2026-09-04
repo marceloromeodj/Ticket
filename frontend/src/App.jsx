@@ -24,6 +24,8 @@ import ServiceList   from './pages/services/ServiceList';
 import ProblemList   from './pages/problems/ProblemList';
 import ChangeList    from './pages/changes/ChangeList';
 import AuditLogPage  from './pages/audit/AuditLogPage';
+import Profile       from './pages/Profile';
+import ContractList  from './pages/contracts/ContractList';
 
 function PrivateRoute({ children, roles }) {
   const { user, token } = useAuthStore();
@@ -68,6 +70,8 @@ export default function App() {
           <Route path="problems"      element={<ProblemList />} />
           <Route path="changes"       element={<ChangeList />} />
           <Route path="audit"         element={<PrivateRoute roles={['super_admin','admin']}><AuditLogPage /></PrivateRoute>} />
+          <Route path="contracts"     element={<PrivateRoute roles={['super_admin','admin']}><ContractList /></PrivateRoute>} />
+          <Route path="profile"       element={<Profile />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

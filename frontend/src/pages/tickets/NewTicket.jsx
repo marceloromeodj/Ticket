@@ -13,6 +13,12 @@ export default function NewTicket() {
     category_id: '', agent_id: '', service_id: '', source: 'web',
   });
   const [files, setFiles] = useState([]);
+  const [customValues, setCustomValues] = useState({});
+
+  const { data: customFields = [] } = useQuery({
+    queryKey: ['custom-fields', 'ticket'],
+    queryFn: () => api.get('/settings/custom-fields', { params: { entity: 'ticket' } }).then(r => r.data || []),
+  });
 
   const { data: agents = [] } = useQuery({
     queryKey: ['agents-list'],
@@ -44,6 +50,7 @@ export default function NewTicket() {
     e.preventDefault();
     const fd = new FormData();
     Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v); });
+    if (Object.keys(customValues).length) fd.append('custom_fields', JSON.stringify(customValues));
     files.forEach(f => fd.append('files', f));
     createMutation.mutate(fd);
   };
@@ -152,6 +159,52 @@ export default function NewTicket() {
             )}
           </div>
         </div>
+
+        {customFields.length > 0 && (
+          <div className="card p-6 space-y-4">
+            <h2 className="font-semibold text-gray-900">Campos adicionales</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {customFields.map(f => (
+                <div key={f.id} className={f.field_type === 'checkbox' ? 'flex items-end pb-0.5' : ''}>
+                  {f.field_type === 'checkbox' ? (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!customValues[f.name]}
+                        onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.checked }))}
+                        className="w-4 h-4 rounded"
+                      />
+                      <span className="text-sm text-gray-700">{f.label}</span>
+                    </label>
+                  ) : (
+                    <>
+                      <label className="label">{f.label}{f.required && ' *'}</label>
+                      {f.field_type === 'select' ? (
+                        <select
+                          required={f.required}
+                          className="input"
+                          value={customValues[f.name] || ''}
+                          onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.value }))}
+                        >
+                          <option value="">Seleccionar...</option>
+                          {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          required={f.required}
+                          type={f.field_type === 'number' ? 'number' : f.field_type === 'date' ? 'date' : f.field_type === 'url' ? 'url' : 'text'}
+                          className="input"
+                          value={customValues[f.name] || ''}
+                          onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.value }))}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="card p-6 space-y-4">
           <h2 className="font-semibold text-gray-900">Información del solicitante</h2>

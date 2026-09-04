@@ -16,6 +16,7 @@ function ArticleModal({ article, onClose }) {
     category: article?.category || '',
     status: article?.status || 'draft',
     is_public: article?.is_public ?? true,
+    is_faq: article?.is_faq ?? false,
   });
 
   const mutation = useMutation({
@@ -75,6 +76,17 @@ function ArticleModal({ article, onClose }) {
                   className="w-4 h-4 rounded"
                 />
                 <span className="text-sm text-gray-700">Visible en portal público</span>
+              </label>
+            </div>
+            <div className="flex items-end pb-0.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_faq}
+                  onChange={e => set('is_faq', e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm text-gray-700">Es una FAQ (aparece en la sección de preguntas frecuentes)</span>
               </label>
             </div>
           </div>

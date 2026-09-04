@@ -8,6 +8,7 @@ module.exports = (sequelize) => sequelize.define('TicketSurvey', {
   token:      { type: DataTypes.STRING(64), allowNull: false, unique: true },
 
   rating:     DataTypes.INTEGER, // 1-5, null hasta que responda
+  nps_score:  DataTypes.INTEGER, // 0-10 ("qué tan probable es que nos recomiendes"), null hasta que responda
   comment:    DataTypes.TEXT,
 
   sent_at:      DataTypes.DATE,

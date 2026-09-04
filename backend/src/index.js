@@ -45,6 +45,12 @@ const serviceRoutes    = require('./routes/services');
 const maintenanceRoutes = require('./routes/maintenance');
 const notificationChannelRoutes = require('./routes/notificationChannels');
 const scheduledReportRoutes = require('./routes/scheduledReports');
+const vendorRoutes      = require('./routes/vendors');
+const contractRoutes    = require('./routes/contracts');
+const apiTokenRoutes    = require('./routes/apiTokens');
+const externalRoutes    = require('./routes/external');
+const swaggerUi         = require('swagger-ui-express');
+const openapiSpec       = require('./config/openapi');
 
 const app    = express();
 const server = http.createServer(app);
@@ -134,6 +140,11 @@ app.use(`${api}/services`,     serviceRoutes);
 app.use(`${api}/maintenance`,  maintenanceRoutes);
 app.use(`${api}/notification-channels`, notificationChannelRoutes);
 app.use(`${api}/scheduled-reports`, scheduledReportRoutes);
+app.use(`${api}/vendors`,      vendorRoutes);
+app.use(`${api}/contracts`,    contractRoutes);
+app.use(`${api}/api-tokens`,   apiTokenRoutes);
+app.use(`${api}/external`,     externalRoutes);
+app.use(`${api}/docs`,         swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 // WhatsApp & Email webhooks (fuera del prefijo /api)
 app.use('/webhook', webhookRoutes);

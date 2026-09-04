@@ -10,7 +10,7 @@ module.exports = (sequelize) => sequelize.define('ScheduledReport', {
   },
   frequency: { type: DataTypes.ENUM('daily', 'weekly', 'monthly'), defaultValue: 'weekly' },
   recipients: { type: DataTypes.JSONB, defaultValue: [] }, // ["email@empresa.com", ...]
-  format: { type: DataTypes.ENUM('csv', 'excel'), defaultValue: 'excel' },
+  format: { type: DataTypes.ENUM('csv', 'excel', 'pdf'), defaultValue: 'excel' },
 
   last_sent_at: DataTypes.DATE,
   active:       { type: DataTypes.BOOLEAN, defaultValue: true },

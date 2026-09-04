@@ -12,6 +12,7 @@ module.exports = (sequelize) => sequelize.define('KnowledgeArticle', {
   content_html: DataTypes.TEXT,
   status:      { type: DataTypes.ENUM('draft', 'published', 'archived'), defaultValue: 'draft' },
   visibility:  { type: DataTypes.ENUM('public', 'agents_only'), defaultValue: 'public' },
+  is_faq:      { type: DataTypes.BOOLEAN, defaultValue: false },
   views:       { type: DataTypes.INTEGER, defaultValue: 0 },
   helpful:     { type: DataTypes.INTEGER, defaultValue: 0 },
   not_helpful: { type: DataTypes.INTEGER, defaultValue: 0 },

@@ -23,6 +23,7 @@ const REQUIRED = [
   { key: 'DB_PASSWORD', minLength: 8 },
   { key: 'MINIO_SECRET_KEY', minLength: 8 },
   { key: 'SUPER_ADMIN_PASSWORD', minLength: 8 },
+  { key: 'ENCRYPTION_KEY', minLength: 64 },
 ];
 
 function validateEnv() {
@@ -41,6 +42,10 @@ function validateEnv() {
     if (value.length < minLength) {
       errors.push(`${key} es demasiado corta (mínimo ${minLength} caracteres).`);
     }
+  }
+
+  if (process.env.ENCRYPTION_KEY && !/^[0-9a-f]{64}$/i.test(process.env.ENCRYPTION_KEY)) {
+    errors.push('ENCRYPTION_KEY debe ser una cadena hexadecimal de 64 caracteres (32 bytes). Generala con: openssl rand -hex 32');
   }
 
   if (process.env.WA_WEBHOOK_VERIFY_TOKEN && KNOWN_INSECURE_VALUES.has(process.env.WA_WEBHOOK_VERIFY_TOKEN)) {

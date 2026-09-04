@@ -7,7 +7,7 @@ router.use(authenticate, tenantMiddleware);
 
 router.get   ('/',        ctrl.list);
 router.get   ('/export',  ctrl.exportTickets);
-router.post  ('/',        requireCompanySelected, ctrl.create);
+router.post  ('/',        requireCompanySelected, upload.array('files', 10), verifyFileSignatures, ctrl.create);
 router.post  ('/bulk',    requireCompanySelected, ctrl.bulkUpdate);
 router.get   ('/:id',     ctrl.getOne);
 router.put   ('/:id',     ctrl.update);

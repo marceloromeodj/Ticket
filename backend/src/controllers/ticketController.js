@@ -198,8 +198,14 @@ async function create(req, res, next) {
     const {
       subject, description, priority = 'medium', type = 'question',
       requester_id, requester_name, requester_email, requester_phone,
-      source = 'web', custom_fields = {}, tags = [],
+      source = 'web', tags = [],
     } = req.body;
+    // Llega como string cuando el formulario se envía multipart/form-data
+    // (con archivos adjuntos) en vez de JSON.
+    let custom_fields = req.body.custom_fields || {};
+    if (typeof custom_fields === 'string') {
+      try { custom_fields = JSON.parse(custom_fields); } catch { custom_fields = {}; }
+    }
     const category_id = emptyToNull(req.body.category_id);
     const agent_id     = emptyToNull(req.body.agent_id);
     const branch_id    = emptyToNull(req.body.branch_id);
@@ -244,8 +250,9 @@ async function create(req, res, next) {
     }
 
     // Mensaje inicial si hay descripción
+    let initialMessage = null;
     if (description) {
-      await TicketMessage.create({
+      initialMessage = await TicketMessage.create({
         ticket_id:    ticket.id,
         user_id:      req.user.role !== 'customer' ? req.user.id : requester_id,
         author_name:  requester_name,
@@ -258,6 +265,25 @@ async function create(req, res, next) {
     }
 
     await t.commit();
+
+    // Adjuntos del formulario de "Nuevo ticket" (fuera de la transacción:
+    // subir a MinIO no debe poder hacer fallar la creación del ticket ya
+    // confirmada).
+    if (req.files?.length > 0) {
+      for (const file of req.files) {
+        const uploaded = await storageService.upload(file);
+        await TicketAttachment.create({
+          ticket_id:     ticket.id,
+          message_id:    initialMessage?.id,
+          filename:      uploaded.filename,
+          original_name: file.originalname,
+          mime_type:     file.mimetype,
+          size:          file.size,
+          storage_path:  uploaded.path,
+          url:           uploaded.url,
+        });
+      }
+    }
 
     // Recargar con asociaciones
     const fullTicket = await Ticket.findByPk(ticket.id, {

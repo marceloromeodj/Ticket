@@ -182,9 +182,16 @@ async function satisfactionReport(req, res, next) {
     const total = surveys.length;
     const avg = total ? surveys.reduce((sum, s) => sum + s.rating, 0) / total : 0;
     const distribution = [1, 2, 3, 4, 5].map(n => surveys.filter(s => s.rating === n).length);
-    // % que calificó 4 o 5 (CSAT) y % que calificó 1-2 (detractor, proxy simple de NPS)
     const csat_pct = total ? Math.round((surveys.filter(s => s.rating >= 4).length / total) * 100) : 0;
     const detractor_pct = total ? Math.round((surveys.filter(s => s.rating <= 2).length / total) * 100) : 0;
+
+    // NPS real: de las respuestas que además contestaron la pregunta de
+    // recomendación (0-10), % promotores (9-10) menos % detractores (0-6).
+    const npsResponses = surveys.filter(s => s.nps_score !== null && s.nps_score !== undefined);
+    const npsTotal = npsResponses.length;
+    const promoters = npsResponses.filter(s => s.nps_score >= 9).length;
+    const detractorsNps = npsResponses.filter(s => s.nps_score <= 6).length;
+    const nps_score = npsTotal ? Math.round(((promoters - detractorsNps) / npsTotal) * 100) : null;
 
     const byAgentMap = {};
     surveys.forEach(s => {
@@ -203,6 +210,8 @@ async function satisfactionReport(req, res, next) {
       avg_rating: Math.round(avg * 10) / 10,
       csat_pct,
       detractor_pct,
+      nps_score,   // -100 a 100, null si nadie respondió la pregunta de NPS
+      nps_responses: npsTotal,
       distribution, // [count con 1 estrella, ..., count con 5 estrellas]
       by_agent,
     });

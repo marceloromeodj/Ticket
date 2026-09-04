@@ -11,12 +11,21 @@ router.get('/by-category',       ctrl.byCategory);
 router.get('/sla',               ctrl.slaReport);
 router.get('/satisfaction',      ctrl.satisfactionReport);
 
-// Exportar cualquiera de los 4 reportes a Excel, con el mismo período que
-// usan los reportes programados (frecuencia semanal por defecto).
+// Exportar cualquiera de los 4 reportes a Excel o PDF, con el mismo período
+// que usan los reportes programados (frecuencia semanal por defecto).
 router.get('/:type/export', async (req, res, next) => {
   try {
-    const { buildReportWorkbook } = require('../services/reportExportService');
-    const buffer = await buildReportWorkbook(req.companyId, req.params.type, req.query.frequency || 'monthly');
+    const { buildReportWorkbook, buildReportPDF } = require('../services/reportExportService');
+    const frequency = req.query.frequency || 'monthly';
+
+    if (req.query.format === 'pdf') {
+      const buffer = await buildReportPDF(req.companyId, req.params.type, frequency);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="reporte-${req.params.type}.pdf"`);
+      return res.send(buffer);
+    }
+
+    const buffer = await buildReportWorkbook(req.companyId, req.params.type, frequency);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="reporte-${req.params.type}.xlsx"`);
     res.send(Buffer.from(buffer));

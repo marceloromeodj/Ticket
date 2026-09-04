@@ -3,8 +3,9 @@ const moment = require('moment');
 const { slaService } = require('../services/slaService');
 const { automationService } = require('../services/automationService');
 const { emailService } = require('../services/emailService');
-const { buildReportWorkbook } = require('../services/reportExportService');
-const { AutomationRule, Ticket, ScheduledReport } = require('../models');
+const { buildReportWorkbook, buildReportPDF } = require('../services/reportExportService');
+const { notificationChannelService } = require('../services/notificationChannelService');
+const { AutomationRule, Ticket, ScheduledReport, Contract, User } = require('../models');
 const { Op } = require('sequelize');
 
 const FREQUENCY_DAYS = { daily: 1, weekly: 7, monthly: 30 };
@@ -60,14 +61,18 @@ function startCronJobs() {
       for (const report of reports) {
         if (!isReportDue(report)) continue;
         try {
-          const buffer = await buildReportWorkbook(report.company_id, report.report_type, report.frequency);
+          const isPdf = report.format === 'pdf';
+          const buffer = isPdf
+            ? await buildReportPDF(report.company_id, report.report_type, report.frequency)
+            : await buildReportWorkbook(report.company_id, report.report_type, report.frequency);
+          const filename = `reporte-${report.report_type}.${isPdf ? 'pdf' : 'xlsx'}`;
           await emailService.sendRaw({
             to: report.recipients.join(','),
             companyId: report.company_id,
             subject: `Reporte HelpDesk (${report.report_type}) — ${new Date().toLocaleDateString('es-AR')}`,
             html: `<p>Adjunto el reporte "${report.report_type}" (${report.frequency}).</p>`,
             text: `Adjunto el reporte "${report.report_type}" (${report.frequency}).`,
-            attachments: [{ filename: `reporte-${report.report_type}.xlsx`, content: Buffer.from(buffer) }],
+            attachments: [{ filename, content: Buffer.from(buffer) }],
           });
           await report.update({ last_sent_at: new Date() });
           console.log(`[Cron] Reporte "${report.report_type}" enviado a empresa ${report.company_id}`);
@@ -80,7 +85,44 @@ function startCronJobs() {
     }
   }, null, true);
 
-  console.log('[Cron] Jobs iniciados: SLA checker (10min), Time-based automation (1h), Reportes programados (diario 07:00)');
+  // ─── Contratos/licencias por vencer: se revisa una vez por día ───
+  new CronJob('0 8 * * *', async () => {
+    try {
+      const { notificationService } = require('../services/notificationService');
+      const contracts = await Contract.findAll({ where: { active: true, alert_sent: false, end_date: { [Op.ne]: null } } });
+
+      for (const contract of contracts) {
+        const daysLeft = moment(contract.end_date).diff(moment().startOf('day'), 'days');
+        if (daysLeft > contract.renewal_alert_days) continue;
+
+        const summary = daysLeft >= 0
+          ? `El contrato/licencia "${contract.name}" vence en ${daysLeft} día(s) (${contract.end_date}).`
+          : `El contrato/licencia "${contract.name}" venció el ${contract.end_date}.`;
+
+        const admins = await User.findAll({
+          where: { company_id: contract.company_id, role: { [Op.in]: ['admin', 'supervisor', 'super_admin'] }, active: true },
+          attributes: ['id'],
+        });
+        for (const admin of admins) {
+          notificationService.create({
+            user_id: admin.id, type: 'system',
+            title: 'Contrato/licencia por vencer',
+            message: summary,
+            link: '/contracts',
+          });
+        }
+        notificationChannelService
+          .broadcast(contract.company_id, 'contract_expiring', `📄 ${summary}`)
+          .catch(err => console.error('[Cron] Error notificando canales de contrato:', err.message));
+
+        await contract.update({ alert_sent: true });
+      }
+    } catch (err) {
+      console.error('[Cron] Error revisando contratos por vencer:', err.message);
+    }
+  }, null, true);
+
+  console.log('[Cron] Jobs iniciados: SLA checker (10min), Time-based automation (1h), Reportes programados (diario 07:00), Contratos por vencer (diario 08:00)');
 }
 
 module.exports = { startCronJobs };

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import {
   LayoutDashboard, Ticket, Users, Building2, GitBranch,
   BarChart2, BookOpen, Settings, ChevronLeft, ChevronRight,
   Database, AlertOctagon, GitPullRequest, ShieldCheck, LayoutGrid, LogOut,
+  FileText, UserCog,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -17,6 +18,7 @@ const NAV = [
   { to: '/assets',    label: 'Activos (CMDB)',   icon: Database,      roles: ['super_admin','admin','supervisor','agent'] },
   { to: '/problems',  label: 'Problemas',        icon: AlertOctagon,  roles: ['super_admin','admin','supervisor','agent'] },
   { to: '/changes',   label: 'Cambios (RFC)',    icon: GitPullRequest, roles: ['super_admin','admin','supervisor','agent'] },
+  { to: '/contracts', label: 'Contratos y proveedores', icon: FileText, roles: ['super_admin','admin'] },
   { type: 'divider' },
   { to: '/agents',    label: 'Agentes',          icon: Users,         roles: ['super_admin','admin','supervisor'] },
   { to: '/branches',  label: 'Sucursales',       icon: GitBranch,     roles: ['super_admin','admin'] },
@@ -31,6 +33,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const canSee = (item) => {
     if (!item.roles) return true;
@@ -90,14 +93,18 @@ export default function Sidebar() {
           'flex items-center gap-2 px-2 py-2 rounded-lg',
           !collapsed && 'mb-1'
         )}>
-          <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase">
+          <button
+            onClick={() => navigate('/profile')}
+            className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase"
+            title="Mi cuenta"
+          >
             {user?.name?.charAt(0) || 'U'}
-          </div>
+          </button>
           {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium truncate">{user?.name}</p>
+            <button onClick={() => navigate('/profile')} className="min-w-0 flex-1 text-left" title="Mi cuenta">
+              <p className="text-xs font-medium truncate flex items-center gap-1"><UserCog size={11} />{user?.name}</p>
               <p className="text-xs text-gray-500 truncate capitalize">{user?.role?.replace('_',' ')}</p>
-            </div>
+            </button>
           )}
           {!collapsed && (
             <button onClick={logout} className="text-gray-500 hover:text-red-400 transition-colors" title="Cerrar sesión">

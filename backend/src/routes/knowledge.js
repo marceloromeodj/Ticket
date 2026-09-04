@@ -25,11 +25,11 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', authorize('super_admin','admin','supervisor','agent'), requireCompanySelected, async (req, res, next) => {
   try {
-    const { title, summary, content, status, visibility, category_id, tags } = req.body;
+    const { title, summary, content, status, visibility, category_id, tags, is_faq } = req.body;
     const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '').substring(0, 100) + '-' + Date.now();
     const article = await KnowledgeArticle.create({
       company_id: req.companyId, category_id, author_id: req.user.id,
-      title, slug, summary, content, status, visibility, tags,
+      title, slug, summary, content, status, visibility, tags, is_faq: !!is_faq,
       published_at: status === 'published' ? new Date() : null,
     });
     res.status(201).json(article);
@@ -49,7 +49,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const article = await KnowledgeArticle.findOne({ where: { id: req.params.id, ...companyScope(req) } });
     if (!article) return res.status(404).json({ error: 'Artículo no encontrado' });
-    const allowed = ['title','summary','content','status','visibility','category_id','tags','meta_title','meta_desc'];
+    const allowed = ['title','summary','content','status','visibility','category_id','tags','meta_title','meta_desc','is_faq'];
     const updates = {};
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
     if (updates.status === 'published' && article.status !== 'published') updates.published_at = new Date();

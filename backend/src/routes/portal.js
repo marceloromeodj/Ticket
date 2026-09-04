@@ -3,7 +3,7 @@
  * Acceso en /api/portal/
  */
 const router = require('express').Router();
-const { sequelize, Ticket, TicketMessage, KnowledgeArticle, Category, User, ChatSession, TicketSurvey } = require('../models');
+const { sequelize, Ticket, TicketMessage, KnowledgeArticle, Category, User, ChatSession, TicketSurvey, Service, Problem, CustomField } = require('../models');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
@@ -24,6 +24,7 @@ router.get('/survey/:token', async (req, res, next) => {
       subject: survey.ticket.subject,
       already_responded: !!survey.responded_at,
       rating: survey.rating,
+      nps_score: survey.nps_score,
       comment: survey.comment,
     });
   } catch (err) { next(err); }
@@ -31,14 +32,17 @@ router.get('/survey/:token', async (req, res, next) => {
 
 router.post('/survey/:token', async (req, res, next) => {
   try {
-    const { rating, comment } = req.body;
+    const { rating, nps_score, comment } = req.body;
     if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'La calificación debe ser entre 1 y 5' });
+    if (nps_score !== undefined && nps_score !== null && (nps_score < 0 || nps_score > 10)) {
+      return res.status(400).json({ error: 'El puntaje de recomendación debe ser entre 0 y 10' });
+    }
 
     const survey = await TicketSurvey.findOne({ where: { token: req.params.token } });
     if (!survey) return res.status(404).json({ error: 'Encuesta no encontrada' });
     if (survey.responded_at) return res.status(400).json({ error: 'Esta encuesta ya fue respondida' });
 
-    await survey.update({ rating, comment: comment || null, responded_at: new Date() });
+    await survey.update({ rating, nps_score: nps_score ?? null, comment: comment || null, responded_at: new Date() });
     res.json({ message: 'Gracias por tu respuesta' });
   } catch (err) { next(err); }
 });
@@ -59,12 +63,71 @@ function portalAuth(req, res, next) {
 
 router.use(portalAuth);
 
+// ─── Catálogo de servicios (público) ─────────────────────────────
+router.get('/services', async (req, res, next) => {
+  try {
+    const services = await Service.findAll({
+      where: { company_id: req.portalCompanyId, active: true },
+      attributes: ['id', 'name', 'description', 'category', 'criticality'],
+      order: [['name', 'ASC']],
+    });
+    res.json(services);
+  } catch (err) { next(err); }
+});
+
+// ─── Preguntas frecuentes (público) ───────────────────────────────
+router.get('/faq', async (req, res, next) => {
+  try {
+    const articles = await KnowledgeArticle.findAll({
+      where: { company_id: req.portalCompanyId, status: 'published', visibility: 'public', is_faq: true },
+      attributes: ['id', 'title', 'slug', 'summary'],
+      order: [['title', 'ASC']],
+    });
+    res.json(articles);
+  } catch (err) { next(err); }
+});
+
+// ─── Estado de servicios / incidentes activos (público) ──────────
+router.get('/status', async (req, res, next) => {
+  try {
+    const activeIncidents = await Problem.findAll({
+      where: { company_id: req.portalCompanyId, is_major: true, status: { [Op.notIn]: ['resolved', 'closed'] } },
+      attributes: ['id', 'title', 'impact', 'status', 'created_at'],
+      order: [['created_at', 'DESC']],
+    });
+    res.json({
+      operational: activeIncidents.length === 0,
+      incidents: activeIncidents,
+    });
+  } catch (err) { next(err); }
+});
+
+// ─── Campos personalizados del ticket, para el formulario público ─
+router.get('/custom-fields', async (req, res, next) => {
+  try {
+    const fields = await CustomField.findAll({
+      where: { company_id: req.portalCompanyId, entity: 'ticket', active: true, show_in_portal: true },
+      order: [['position', 'ASC']],
+    });
+    res.json(fields);
+  } catch (err) { next(err); }
+});
+
 // ─── Crear ticket (sin cuenta) ───────────────────────────────────
 router.post('/tickets', async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
-    const { name, email, phone, subject, description, category_id, priority = 'medium' } = req.body;
-    if (!email || !subject) {
+    // Acepta requester_name/requester_email (nombres usados en el resto de
+    // la app y por el formulario del portal) o name/email como alias.
+    const {
+      requester_name, requester_email, requester_phone,
+      name, email, phone,
+      subject, description, category_id, service_id, priority = 'medium', custom_fields,
+    } = req.body;
+    const finalName  = requester_name || name;
+    const finalEmail = requester_email || email;
+    const finalPhone = requester_phone || phone;
+    if (!finalEmail || !subject) {
       await t.rollback();
       return res.status(400).json({ error: 'Email y asunto son requeridos' });
     }
@@ -80,17 +143,19 @@ router.post('/tickets', async (req, res, next) => {
       source:          'web',
       status:          'open',
       requester_id:    req.portalUser?.id,
-      requester_name:  name,
-      requester_email: email,
-      requester_phone: phone,
+      requester_name:  finalName,
+      requester_email: finalEmail,
+      requester_phone: finalPhone,
       category_id,
+      service_id:      service_id || null,
+      custom_fields:   custom_fields || {},
     }, { transaction: t });
 
     if (description) {
       await TicketMessage.create({
         ticket_id:    ticket.id,
-        author_name:  name,
-        author_email: email,
+        author_name:  finalName,
+        author_email: finalEmail,
         author_type:  'customer',
         content:      description,
         message_type: 'reply',

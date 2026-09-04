@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet, Key, Eye, EyeOff } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
   { id: 'channels', label: 'Notificaciones', icon: Send },
   { id: 'scheduled-reports', label: 'Reportes programados', icon: FileSpreadsheet },
+  { id: 'api', label: 'API', icon: Key },
 ];
 
 // ─── Webhook de monitoreo (Zabbix/PRTG) ──────────────────────────────────────
@@ -857,7 +858,7 @@ function ChannelModal({ onClose }) {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
-  const [events, setEvents] = useState(['ticket_urgent', 'sla_breach', 'major_incident']);
+  const [events, setEvents] = useState(['ticket_urgent', 'sla_breach', 'major_incident', 'contract_expiring']);
 
   const mutation = useMutation({
     mutationFn: () => api.post('/notification-channels', {
@@ -909,7 +910,7 @@ function ChannelModal({ onClose }) {
           <div>
             <label className="label">Eventos</label>
             <div className="space-y-1">
-              {[['ticket_urgent', 'Ticket urgente creado'], ['sla_breach', 'SLA incumplido'], ['major_incident', 'Incidente masivo / mayor']].map(([k, l]) => (
+              {[['ticket_urgent', 'Ticket urgente creado'], ['sla_breach', 'SLA incumplido'], ['major_incident', 'Incidente masivo / mayor'], ['contract_expiring', 'Contrato/licencia por vencer']].map(([k, l]) => (
                 <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" className="rounded" checked={events.includes(k)} onChange={() => toggleEvent(k)} />
                   {l}
@@ -959,7 +960,7 @@ function ScheduledReportSettings() {
         {reports.map(r => (
           <div key={r.id} className="card p-4 flex items-center justify-between">
             <div>
-              <p className="font-medium text-gray-900">{REPORT_TYPE_LABELS[r.report_type]} — {FREQUENCY_LABELS[r.frequency]}</p>
+              <p className="font-medium text-gray-900">{REPORT_TYPE_LABELS[r.report_type]} — {FREQUENCY_LABELS[r.frequency]} ({r.format === 'pdf' ? 'PDF' : 'Excel'})</p>
               <p className="text-xs text-gray-400">{(r.recipients || []).join(', ')}</p>
             </div>
             <button onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(r.id); }} className="btn-ghost p-2 text-red-400"><Trash2 size={14} /></button>
@@ -975,11 +976,12 @@ function ScheduledReportModal({ onClose }) {
   const queryClient = useQueryClient();
   const [reportType, setReportType] = useState('overview');
   const [frequency, setFrequency] = useState('weekly');
+  const [format, setFormat] = useState('excel');
   const [recipients, setRecipients] = useState('');
 
   const mutation = useMutation({
     mutationFn: () => api.post('/scheduled-reports', {
-      report_type: reportType, frequency,
+      report_type: reportType, frequency, format,
       recipients: recipients.split(',').map(e => e.trim()).filter(Boolean),
     }),
     onSuccess: () => { queryClient.invalidateQueries(['scheduled-reports']); toast.success('Creado'); onClose(); },
@@ -1000,11 +1002,20 @@ function ScheduledReportModal({ onClose }) {
               {Object.entries(REPORT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label">Frecuencia</label>
-            <select className="input" value={frequency} onChange={e => setFrequency(e.target.value)}>
-              {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Frecuencia</label>
+              <select className="input" value={frequency} onChange={e => setFrequency(e.target.value)}>
+                {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Formato</label>
+              <select className="input" value={format} onChange={e => setFormat(e.target.value)}>
+                <option value="excel">Excel</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="label">Destinatarios (separados por coma)</label>
@@ -1020,12 +1031,83 @@ function ScheduledReportModal({ onClose }) {
   );
 }
 
+// ─── Tokens de API (integraciones externas) ──────────────────────────────────
+function ApiTokenSettings() {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [newToken, setNewToken] = useState(null);
+  const [reveal, setReveal] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['api-tokens'],
+    queryFn: () => api.get('/api-tokens').then(r => r.data),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.post('/api-tokens', { name }),
+    onSuccess: ({ data }) => { queryClient.invalidateQueries(['api-tokens']); setNewToken(data.token); setName(''); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id) => api.delete(`/api-tokens/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries(['api-tokens']); toast.success('Token revocado'); },
+  });
+
+  const tokens = data?.tokens || [];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-gray-500">
+        Tokens para que otros sistemas creen y consulten tickets vía API. Documentación en{' '}
+        <a href="/api/docs" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">/api/docs</a>.
+      </p>
+
+      {newToken && (
+        <div className="card p-4 bg-amber-50 border-amber-200 space-y-2">
+          <p className="text-sm font-medium text-amber-800">Copiá este token ahora — no se va a volver a mostrar:</p>
+          <div className="flex items-center gap-2">
+            <input readOnly className="input font-mono text-xs flex-1" type={reveal ? 'text' : 'password'} value={newToken} />
+            <button onClick={() => setReveal(v => !v)} className="btn-ghost h-9 px-3">{reveal ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+            <button onClick={() => { navigator.clipboard.writeText(newToken); toast.success('Copiado'); }} className="btn-ghost h-9 px-3"><Copy size={14} /></button>
+          </div>
+          <button onClick={() => setNewToken(null)} className="text-xs text-amber-700 hover:underline">Ya lo copié, cerrar</button>
+        </div>
+      )}
+
+      <form onSubmit={e => { e.preventDefault(); if (name.trim()) createMutation.mutate(); }} className="flex gap-2">
+        <input className="input flex-1" placeholder="Nombre (ej: Integración Zabbix, ERP interno)" value={name} onChange={e => setName(e.target.value)} />
+        <button type="submit" disabled={!name.trim() || createMutation.isLoading} className="btn-primary"><Plus size={16} /> Generar token</button>
+      </form>
+
+      <div className="space-y-2">
+        {isLoading && <div className="text-center text-gray-400 py-6">Cargando...</div>}
+        {!isLoading && tokens.length === 0 && <div className="text-center text-gray-400 py-6">Sin tokens generados</div>}
+        {tokens.map(t => (
+          <div key={t.id} className="card p-4 flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900">{t.name}</p>
+              <p className="text-xs text-gray-400 font-mono">{t.token_prefix}••••••••{!t.active && ' · revocado'}</p>
+            </div>
+            {t.active && (
+              <button onClick={() => { if (confirm('¿Revocar este token? Dejará de funcionar de inmediato.')) revokeMutation.mutate(t.id); }} className="btn-ghost p-2 text-red-400">
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
   const ActiveTab = {
     general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings,
     channels: ChannelSettings, 'scheduled-reports': ScheduledReportSettings,
+    api: ApiTokenSettings,
   }[activeTab];
 
   return (

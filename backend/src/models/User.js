@@ -62,6 +62,15 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    // MFA/TOTP: mfa_secret se genera al iniciar el setup (POST /auth/mfa/setup)
+    // pero mfa_enabled queda en false hasta confirmar un código válido
+    // (POST /auth/mfa/enable), para no bloquear al usuario si abandona el
+    // flujo de configuración a mitad de camino.
+    mfa_secret:  DataTypes.STRING(64),
+    mfa_enabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
   }, {
     tableName: 'users',
     indexes: [
@@ -72,9 +81,11 @@ module.exports = (sequelize) => {
       { fields: ['active'] },
     ],
     defaultScope: {
-      attributes: { exclude: ['password', 'reset_token'] },
+      attributes: { exclude: ['password', 'reset_token', 'mfa_secret'] },
     },
     scopes: {
+      // Sin exclusiones: usado tanto para verificar contraseña como para
+      // leer/escribir mfa_secret (ambos excluidos por defaultScope).
       withPassword: { attributes: {} },
     },
   });

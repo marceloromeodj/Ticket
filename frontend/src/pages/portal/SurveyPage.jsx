@@ -14,6 +14,7 @@ export default function SurveyPage() {
   const { token } = useParams();
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
+  const [npsScore, setNpsScore] = useState(null);
   const [comment, setComment] = useState('');
   const [done, setDone] = useState(false);
 
@@ -24,7 +25,7 @@ export default function SurveyPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: () => portalApi.post(`/survey/${token}`, { rating, comment }),
+    mutationFn: () => portalApi.post(`/survey/${token}`, { rating, nps_score: npsScore, comment }),
     onSuccess: () => setDone(true),
   });
 
@@ -81,6 +82,25 @@ export default function SurveyPage() {
             />
           </button>
         ))}
+      </div>
+
+      <div>
+        <p className="text-sm text-gray-600 text-center mb-2">¿Qué tan probable es que nos recomiendes? (0 = nada probable, 10 = muy probable)</p>
+        <div className="flex justify-center gap-1 flex-wrap">
+          {Array.from({ length: 11 }, (_, n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setNpsScore(n)}
+              className={clsx(
+                'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
+                npsScore === n ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
 
       <textarea

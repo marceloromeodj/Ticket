@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Ticket, Search, Plus, Send, MessageSquare, BookOpen, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Ticket, Search, Plus, Send, MessageSquare, BookOpen, ChevronRight, ArrowLeft, LayoutGrid, HelpCircle, Activity, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../../api/axios';
 import { safeFormat as format } from '../../utils/safeDate';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 
-// Portal uses public API without auth
-const portalApi = {
-  get: (url, config) => api.get(`/portal${url}`, config),
-  post: (url, data) => api.post(`/portal${url}`, data),
-};
+// Portal público (sin sesión): la empresa se identifica por `company_id`
+// como query param en cada request (el backend también acepta el header
+// X-Company-ID, usado por el resto de la app autenticada) -- ver
+// companies.js /resolve, que lo resuelve por subdominio o, si la
+// instalación tiene una sola empresa activa, por defecto a esa.
+function createPortalApi(companyId) {
+  const withCompany = (config = {}) => ({ ...config, params: { ...(config.params || {}), company_id: companyId } });
+  return {
+    get:  (url, config) => api.get(`/portal${url}`, withCompany(config)),
+    post: (url, data, config) => api.post(`/portal${url}`, data, withCompany(config)),
+  };
+}
 
 const STATUS_LABELS = { open: 'Abierto', pending: 'Pendiente', waiting_customer: 'Esperando respuesta', resolved: 'Resuelto', closed: 'Cerrado' };
 const STATUS_COLORS = {
@@ -22,12 +29,29 @@ const STATUS_COLORS = {
   closed: 'bg-gray-100 text-gray-600',
 };
 
-function NewTicketForm({ onSuccess }) {
-  const [form, setForm] = useState({ requester_name: '', requester_email: '', subject: '', description: '', priority: 'medium' });
+function NewTicketForm({ companyId, onSuccess, preselectedServiceId }) {
+  const portalApi = createPortalApi(companyId);
+  const [form, setForm] = useState({
+    requester_name: '', requester_email: '', subject: '', description: '',
+    priority: 'medium', service_id: preselectedServiceId || '',
+  });
+  const [customValues, setCustomValues] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const { data: services = [] } = useQuery({
+    queryKey: ['portal-services', companyId],
+    queryFn: () => portalApi.get('/services').then(r => r.data || []),
+    enabled: !!companyId,
+  });
+
+  const { data: customFields = [] } = useQuery({
+    queryKey: ['portal-custom-fields', companyId],
+    queryFn: () => portalApi.get('/custom-fields').then(r => r.data || []),
+    enabled: !!companyId,
+  });
+
   const mutation = useMutation({
-    mutationFn: (data) => portalApi.post('/tickets', data),
+    mutationFn: (data) => portalApi.post('/tickets', { ...data, custom_fields: customValues }),
     onSuccess: (res) => {
       toast.success('Ticket creado. ¡Te contactaremos pronto!');
       onSuccess && onSuccess(res.data);
@@ -63,6 +87,43 @@ function NewTicketForm({ onSuccess }) {
             <option value="urgent">Urgente</option>
           </select>
         </div>
+        {services.length > 0 && (
+          <div>
+            <label className="label">Servicio</label>
+            <select className="input" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
+              <option value="">No estoy seguro</option>
+              {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        )}
+        {customFields.map(f => (
+          <div key={f.id} className={f.field_type === 'checkbox' ? 'flex items-end pb-0.5' : 'col-span-2'}>
+            {f.field_type === 'checkbox' ? (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!customValues[f.name]} onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.checked }))} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700">{f.label}</span>
+              </label>
+            ) : (
+              <>
+                <label className="label">{f.label}{f.required && ' *'}</label>
+                {f.field_type === 'select' ? (
+                  <select required={f.required} className="input" value={customValues[f.name] || ''} onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.value }))}>
+                    <option value="">Seleccionar...</option>
+                    {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    required={f.required}
+                    type={f.field_type === 'number' ? 'number' : f.field_type === 'date' ? 'date' : 'text'}
+                    className="input"
+                    value={customValues[f.name] || ''}
+                    onChange={e => setCustomValues(v => ({ ...v, [f.name]: e.target.value }))}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        ))}
       </div>
       <button type="submit" disabled={mutation.isLoading} className="btn-primary w-full justify-center">
         {mutation.isLoading ? 'Enviando...' : 'Enviar solicitud'}
@@ -71,8 +132,10 @@ function NewTicketForm({ onSuccess }) {
   );
 }
 
-function TicketLookup() {
+function TicketLookup({ companyId }) {
+  const portalApi = createPortalApi(companyId);
   const [query, setQuery] = useState('');
+  const [email, setEmail] = useState('');
   const [ticket, setTicket] = useState(null);
   const [reply, setReply] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,13 +143,13 @@ function TicketLookup() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || !email.trim()) return;
     setLoading(true);
     try {
-      const res = await portalApi.get(`/tickets/${query.trim()}`);
+      const res = await portalApi.get(`/tickets/${query.trim()}`, { params: { email: email.trim() } });
       setTicket(res.data);
     } catch {
-      toast.error('Ticket no encontrado');
+      toast.error('Ticket no encontrado. Revisá el número y el email.');
     } finally {
       setLoading(false);
     }
@@ -96,10 +159,10 @@ function TicketLookup() {
     if (!reply.trim()) return;
     setReplyLoading(true);
     try {
-      await portalApi.post(`/tickets/${ticket.id}/reply`, { content: reply });
+      await portalApi.post(`/tickets/${ticket.id}/reply`, { content: reply, email });
       toast.success('Respuesta enviada');
       setReply('');
-      const res = await portalApi.get(`/tickets/${ticket.ticket_number}`);
+      const res = await portalApi.get(`/tickets/${ticket.ticket_number}`, { params: { email } });
       setTicket(res.data);
     } catch {
       toast.error('Error al enviar respuesta');
@@ -166,15 +229,24 @@ function TicketLookup() {
 
   return (
     <form onSubmit={handleSearch} className="space-y-4">
-      <p className="text-sm text-gray-600">Ingresa tu número de ticket para ver el estado y responder.</p>
-      <div className="flex gap-3">
+      <p className="text-sm text-gray-600">Ingresá el número de tu ticket y el email con el que lo creaste.</p>
+      <div className="grid grid-cols-2 gap-3">
         <input
-          className="input flex-1"
-          placeholder="ej: TKT-0042"
+          className="input"
+          placeholder="Nº de ticket, ej: 42"
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
-        <button type="submit" disabled={loading} className="btn-primary px-6">
+        <input
+          type="email"
+          className="input"
+          placeholder="tu@email.com"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-3">
+        <button type="submit" disabled={loading || !query.trim() || !email.trim()} className="btn-primary px-6 w-full justify-center">
           {loading ? 'Buscando...' : <><Search size={16} /> Buscar</>}
         </button>
       </div>
@@ -182,10 +254,12 @@ function TicketLookup() {
   );
 }
 
-function KnowledgeSection() {
+function KnowledgeSection({ companyId }) {
+  const portalApi = createPortalApi(companyId);
   const { data = [], isLoading } = useQuery({
-    queryKey: ['portal-kb'],
+    queryKey: ['portal-kb', companyId],
     queryFn: () => portalApi.get('/articles').then(r => r.data?.articles || r.data || []),
+    enabled: !!companyId,
   });
 
   return (
@@ -211,13 +285,112 @@ function KnowledgeSection() {
   );
 }
 
+function ServicesSection({ companyId }) {
+  const portalApi = createPortalApi(companyId);
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['portal-services-list', companyId],
+    queryFn: () => portalApi.get('/services').then(r => r.data || []),
+    enabled: !!companyId,
+  });
+
+  return (
+    <div className="space-y-3">
+      {isLoading && <p className="text-gray-400 text-center py-6">Cargando...</p>}
+      {data.map(s => (
+        <div key={s.id} className="p-4 bg-white rounded-xl border border-gray-100">
+          <p className="text-sm font-medium text-gray-900">{s.name}</p>
+          {s.description && <p className="text-xs text-gray-500 mt-1">{s.description}</p>}
+        </div>
+      ))}
+      {!isLoading && data.length === 0 && <p className="text-center text-gray-400 py-6">No hay servicios publicados</p>}
+    </div>
+  );
+}
+
+function FaqSection({ companyId }) {
+  const portalApi = createPortalApi(companyId);
+  const [open, setOpen] = useState(null);
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['portal-faq', companyId],
+    queryFn: () => portalApi.get('/faq').then(r => r.data || []),
+    enabled: !!companyId,
+  });
+
+  return (
+    <div className="space-y-2">
+      {isLoading && <p className="text-gray-400 text-center py-6">Cargando...</p>}
+      {data.map(a => (
+        <div key={a.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <button
+            onClick={() => setOpen(open === a.id ? null : a.id)}
+            className="w-full flex items-center justify-between p-4 text-left"
+          >
+            <span className="text-sm font-medium text-gray-900">{a.title}</span>
+            <ChevronRight size={14} className={clsx('text-gray-400 transition-transform', open === a.id && 'rotate-90')} />
+          </button>
+          {open === a.id && a.summary && (
+            <p className="px-4 pb-4 text-sm text-gray-500">{a.summary}</p>
+          )}
+        </div>
+      ))}
+      {!isLoading && data.length === 0 && <p className="text-center text-gray-400 py-6">No hay preguntas frecuentes cargadas</p>}
+    </div>
+  );
+}
+
+function StatusSection({ companyId }) {
+  const portalApi = createPortalApi(companyId);
+  const { data, isLoading } = useQuery({
+    queryKey: ['portal-status', companyId],
+    queryFn: () => portalApi.get('/status').then(r => r.data),
+    enabled: !!companyId,
+  });
+
+  if (isLoading) return <p className="text-gray-400 text-center py-6">Cargando...</p>;
+
+  if (data?.operational) {
+    return (
+      <div className="flex flex-col items-center py-8 gap-2">
+        <CheckCircle2 size={40} className="text-green-500" />
+        <p className="font-medium text-gray-900">Todos los servicios operativos</p>
+        <p className="text-sm text-gray-500">No hay incidentes activos en este momento.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {(data?.incidents || []).map(i => (
+        <div key={i.id} className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
+          <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-900">{i.title}</p>
+            {i.impact && <p className="text-xs text-amber-700 mt-1">{i.impact}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CustomerPortal() {
-  const [view, setView] = useState('home'); // home | new | lookup | kb
+  const [view, setView] = useState('home'); // home | new | lookup | kb | services | faq | status
+  const [companyId, setCompanyId] = useState(null);
+  const [resolved, setResolved] = useState(false);
+
+  useEffect(() => {
+    api.get('/companies/resolve')
+      .then(({ data }) => setCompanyId(data?.company?.id || null))
+      .finally(() => setResolved(true));
+  }, []);
 
   const VIEWS = [
     { id: 'new', label: 'Nuevo ticket', icon: Plus, desc: 'Crea una nueva solicitud de soporte' },
     { id: 'lookup', label: 'Estado de ticket', icon: Search, desc: 'Consulta el estado de tu solicitud' },
     { id: 'kb', label: 'Base de conocimiento', icon: BookOpen, desc: 'Artículos de ayuda y tutoriales' },
+    { id: 'faq', label: 'Preguntas frecuentes', icon: HelpCircle, desc: 'Respuestas rápidas a dudas comunes' },
+    { id: 'services', label: 'Catálogo de servicios', icon: LayoutGrid, desc: 'Servicios de soporte disponibles' },
+    { id: 'status', label: 'Estado de servicios', icon: Activity, desc: 'Incidentes activos y disponibilidad' },
   ];
 
   return (
@@ -232,6 +405,12 @@ export default function CustomerPortal() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 pb-12">
+        {resolved && !companyId && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4 mb-4">
+            No se pudo identificar la empresa de soporte para esta URL. Contactá al administrador.
+          </div>
+        )}
+
         {view === 'home' && (
           <div className="space-y-3">
             {VIEWS.map(v => (
@@ -264,9 +443,12 @@ export default function CustomerPortal() {
               </h2>
             </div>
             <div className="p-6">
-              {view === 'new' && <NewTicketForm onSuccess={() => setTimeout(() => setView('home'), 2000)} />}
-              {view === 'lookup' && <TicketLookup />}
-              {view === 'kb' && <KnowledgeSection />}
+              {view === 'new' && <NewTicketForm companyId={companyId} onSuccess={() => setTimeout(() => setView('home'), 2000)} />}
+              {view === 'lookup' && <TicketLookup companyId={companyId} />}
+              {view === 'kb' && <KnowledgeSection companyId={companyId} />}
+              {view === 'faq' && <FaqSection companyId={companyId} />}
+              {view === 'services' && <ServicesSection companyId={companyId} />}
+              {view === 'status' && <StatusSection companyId={companyId} />}
             </div>
           </div>
         )}

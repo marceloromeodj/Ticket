@@ -5,19 +5,26 @@ const { getSubdomainSlug } = require('../utils/subdomain');
 const { logAudit } = require('../utils/audit');
 
 // Público (sin autenticar): resuelve la empresa a partir del subdominio de
-// la URL, para mostrar su nombre/logo en la pantalla de login antes de que
-// el usuario se identifique. Solo expone campos de marca, nada sensible.
+// la URL, para mostrar su nombre/logo en la pantalla de login (y para que
+// el portal de clientes sepa a qué empresa pertenece) antes de que el
+// usuario se identifique. Solo expone campos de marca, nada sensible.
 // Debe registrarse antes de router.use(authenticate).
 router.get('/resolve', async (req, res, next) => {
   try {
     const slug = getSubdomainSlug(req);
-    if (!slug) return res.json({ company: null });
+    const attributes = ['id', 'name', 'slug', 'logo_url', 'primary_color'];
 
-    const company = await Company.findOne({
-      where: { slug, active: true },
-      attributes: ['id', 'name', 'slug', 'logo_url', 'primary_color'],
-    });
-    res.json({ company: company || null });
+    if (slug) {
+      const company = await Company.findOne({ where: { slug, active: true }, attributes });
+      return res.json({ company: company || null });
+    }
+
+    // Sin modo multi-subdominio configurado: si la instalación tiene una
+    // sola empresa activa (el caso típico fuera de un SaaS multi-tenant),
+    // se resuelve a esa por defecto -- si no, no hay forma de saber cuál
+    // es sin un subdominio, así que se devuelve null.
+    const activeCompanies = await Company.findAll({ where: { active: true }, attributes, limit: 2 });
+    res.json({ company: activeCompanies.length === 1 ? activeCompanies[0] : null });
   } catch (err) { next(err); }
 });
 
