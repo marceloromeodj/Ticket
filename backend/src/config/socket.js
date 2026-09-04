@@ -1,12 +1,14 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { buildOriginChecker } = require('../utils/allowedOrigin');
 
 let io;
+const isAllowedOrigin = buildOriginChecker();
 
 function initSocket(server) {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost',
+      origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
       credentials: true,
     },
     transports: ['websocket', 'polling'],

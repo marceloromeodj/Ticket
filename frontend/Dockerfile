@@ -1,8 +1,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-ARG VITE_API_URL=http://localhost/api
-ARG VITE_WS_URL=http://localhost
+# Vacío por defecto = mismo origen que la página (relativo). Recomendado
+# así para que el mismo build sirva en cualquier IP/dominio/subdominio sin
+# tener que reconstruir el frontend cada vez que cambia la URL pública.
+ARG VITE_API_URL=
+ARG VITE_WS_URL=
 
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_WS_URL=$VITE_WS_URL

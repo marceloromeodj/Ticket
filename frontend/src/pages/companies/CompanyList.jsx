@@ -53,6 +53,9 @@ function CompanyModal({ company, onClose }) {
                 onChange={e => set('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                 placeholder="mi-empresa"
               />
+              <p className="text-xs text-gray-400 mt-1">
+                Si el login por subdominio está habilitado, esta empresa entra por <span className="font-mono">{form.slug || 'mi-empresa'}.tudominio.com</span>
+              </p>
             </div>
             <div>
               <label className="label">Dominio</label>

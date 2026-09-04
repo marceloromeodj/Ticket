@@ -15,6 +15,7 @@ const { initSocket } = require('./config/socket');
 const { initRedis } = require('./config/redis');
 const { startWorkers } = require('./workers');
 const { startCronJobs } = require('./workers/cronJobs');
+const { buildOriginChecker } = require('./utils/allowedOrigin');
 
 // ─── Routes ─────────────────────────────────────────────────────
 const authRoutes       = require('./routes/auth');
@@ -45,8 +46,11 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(compression());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
+// origin dinámico: además de FRONTEND_URL, acepta cualquier subdominio de
+// APP_BASE_DOMAIN (una empresa por subdominio comparte el mismo backend).
+const isAllowedOrigin = buildOriginChecker();
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost',
+  origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Company-ID', 'X-Branch-ID'],

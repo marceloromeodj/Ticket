@@ -1,6 +1,24 @@
 const router = require('express').Router();
 const { Company, Branch, User } = require('../models');
 const { authenticate, authorize } = require('../middleware/auth');
+const { getSubdomainSlug } = require('../utils/subdomain');
+
+// Público (sin autenticar): resuelve la empresa a partir del subdominio de
+// la URL, para mostrar su nombre/logo en la pantalla de login antes de que
+// el usuario se identifique. Solo expone campos de marca, nada sensible.
+// Debe registrarse antes de router.use(authenticate).
+router.get('/resolve', async (req, res, next) => {
+  try {
+    const slug = getSubdomainSlug(req);
+    if (!slug) return res.json({ company: null });
+
+    const company = await Company.findOne({
+      where: { slug, active: true },
+      attributes: ['id', 'name', 'slug', 'logo_url', 'primary_color'],
+    });
+    res.json({ company: company || null });
+  } catch (err) { next(err); }
+});
 
 router.use(authenticate);
 

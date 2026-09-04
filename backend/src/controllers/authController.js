@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { User, Company, Branch } = require('../models');
 const { emailService } = require('../services/emailService');
+const { getSubdomainSlug } = require('../utils/subdomain');
 
 function signToken(user) {
   return jwt.sign(
@@ -25,8 +26,12 @@ function signRefreshToken(userId) {
 // POST /api/auth/login
 async function login(req, res, next) {
   try {
-    const { email, password, company_slug } = req.body;
+    const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
+
+    // Si se accede por el subdominio de una empresa (empresa1.dominio.com),
+    // se usa como scope implícito aunque el cliente no lo mande explícito.
+    const company_slug = req.body.company_slug || getSubdomainSlug(req);
 
     // Buscar usuario con scope que incluya password
     const whereClause = { email: email.toLowerCase(), active: true };

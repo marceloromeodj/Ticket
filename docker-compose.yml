@@ -96,6 +96,10 @@ services:
       MINIO_SECRET_KEY: ${MINIO_PASSWORD:?Definí MINIO_PASSWORD en .env}
       MINIO_BUCKET: ${MINIO_BUCKET:-helpdesk-files}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      # Dominio base para el modo "una empresa por subdominio" (ej.
+      # ticket.ucp.edu.ar). Vacío = deshabilitado, se usa un solo login
+      # compartido como hasta ahora.
+      APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-}
       WA_WEBHOOK_VERIFY_TOKEN: ${WA_WEBHOOK_VERIFY_TOKEN:-}
       WA_ACCESS_TOKEN: ${WA_ACCESS_TOKEN:-}
       WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-}
@@ -116,8 +120,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
-        VITE_WS_URL: ${VITE_WS_URL:-http://localhost}
+        # Vacío por defecto = relativo al mismo origen (recomendado, ver
+        # frontend/Dockerfile). Solo definirlas si el frontend se sirve
+        # desde un origen distinto al backend.
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_WS_URL: ${VITE_WS_URL:-}
     container_name: helpdesk_frontend
     restart: unless-stopped
     depends_on:

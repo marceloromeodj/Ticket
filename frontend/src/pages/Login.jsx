@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Ticket } from 'lucide-react';
+import api from '../api/axios';
 
 export default function Login() {
   const { login, token } = useAuthStore();
@@ -9,6 +10,16 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [company, setCompany] = useState(null);
+
+  // Si se entra por el subdominio de una empresa (empresa1.dominio.com),
+  // el backend la resuelve por el Host de la petición y acá se muestra su
+  // nombre/logo en vez del branding genérico.
+  useEffect(() => {
+    api.get('/companies/resolve')
+      .then(({ data }) => setCompany(data?.company || null))
+      .catch(() => setCompany(null));
+  }, []);
 
   if (token) return <Navigate to="/" replace />;
 
@@ -27,11 +38,13 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 backdrop-blur rounded-2xl mb-4">
-            <Ticket size={32} className="text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 backdrop-blur rounded-2xl mb-4 overflow-hidden">
+            {company?.logo_url
+              ? <img src={company.logo_url} alt={company.name} className="w-full h-full object-contain p-2" />
+              : <Ticket size={32} className="text-white" />}
           </div>
-          <h1 className="text-3xl font-bold text-white">HelpDesk</h1>
-          <p className="text-primary-200 mt-1">Sistema de Tickets Multi-Empresa</p>
+          <h1 className="text-3xl font-bold text-white">{company?.name || 'HelpDesk'}</h1>
+          <p className="text-primary-200 mt-1">{company ? 'Portal de soporte' : 'Sistema de Tickets Multi-Empresa'}</p>
         </div>
 
         {/* Form */}
@@ -69,7 +82,12 @@ export default function Login() {
                 autoComplete="current-password"
               />
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5 text-base mt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full justify-center py-2.5 text-base mt-2"
+              style={company?.primary_color ? { backgroundColor: company.primary_color } : undefined}
+            >
               {loading ? 'Iniciando sesión...' : 'Ingresar'}
             </button>
           </form>
