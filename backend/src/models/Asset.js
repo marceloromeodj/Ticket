@@ -8,13 +8,9 @@ module.exports = (sequelize) => sequelize.define('Asset', {
 
   asset_tag: { type: DataTypes.STRING(50), allowNull: false }, // código único por empresa (etiqueta/QR)
   name:      { type: DataTypes.STRING(200), allowNull: false },
-  type: {
-    type: DataTypes.ENUM(
-      'pc', 'notebook', 'server', 'vm', 'printer', 'switch', 'router',
-      'firewall', 'ap', 'ups', 'camera', 'phone', 'other'
-    ),
-    defaultValue: 'other',
-  },
+  // Antes un ENUM fijo; ahora una referencia liviana (no FK estricta) a
+  // AssetType.key, configurable por empresa desde Activos > Tipos.
+  type: { type: DataTypes.STRING(50), defaultValue: 'other' },
   status: {
     type: DataTypes.ENUM('active', 'maintenance', 'stored', 'retired'),
     defaultValue: 'active',

@@ -1,21 +1,88 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Plus, Pencil, Trash2, X, Search, QrCode } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Search, QrCode, Tags } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 
-const TYPE_LABELS = {
-  pc: 'PC', notebook: 'Notebook', server: 'Servidor', vm: 'Máquina virtual',
-  printer: 'Impresora', switch: 'Switch', router: 'Router', firewall: 'Firewall',
-  ap: 'Access Point', ups: 'UPS', camera: 'Cámara', phone: 'Teléfono', other: 'Otro',
-};
 const STATUS_LABELS = { active: 'Activo', maintenance: 'Mantenimiento', stored: 'Guardado', retired: 'De baja' };
 const STATUS_COLORS = {
   active: 'bg-green-100 text-green-700', maintenance: 'bg-amber-100 text-amber-700',
   stored: 'bg-gray-100 text-gray-600', retired: 'bg-red-100 text-red-700',
 };
+
+function AssetTypesModal({ onClose }) {
+  const queryClient = useQueryClient();
+  const [newLabel, setNewLabel] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['asset-types', 'all'],
+    queryFn: () => api.get('/asset-types', { params: { active: 'all' } }).then(r => r.data),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.post('/asset-types', { label: newLabel.trim() }),
+    onSuccess: () => { queryClient.invalidateQueries(['asset-types']); toast.success('Tipo creado'); setNewLabel(''); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, active }) => api.put(`/asset-types/${id}`, { active }),
+    onSuccess: () => queryClient.invalidateQueries(['asset-types']),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ id, label }) => api.put(`/asset-types/${id}`, { label }),
+    onSuccess: () => { queryClient.invalidateQueries(['asset-types']); toast.success('Renombrado'); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/asset-types/${id}`),
+    onSuccess: ({ data }) => { queryClient.invalidateQueries(['asset-types']); toast.success(data.message); },
+  });
+
+  const types = data?.types || [];
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Tipos de activos</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <form onSubmit={e => { e.preventDefault(); if (newLabel.trim()) createMutation.mutate(); }} className="flex gap-2">
+            <input className="input flex-1" placeholder="Nuevo tipo (ej: Tablet)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
+            <button type="submit" disabled={!newLabel.trim() || createMutation.isLoading} className="btn-primary"><Plus size={14} /></button>
+          </form>
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {isLoading && <p className="text-sm text-gray-400 text-center py-4">Cargando...</p>}
+            {types.map(t => (
+              <div key={t.id} className={clsx('flex items-center gap-2 p-2 rounded-lg', !t.active && 'opacity-50')}>
+                <input
+                  className="input h-8 text-sm flex-1"
+                  defaultValue={t.label}
+                  onBlur={e => { if (e.target.value.trim() && e.target.value !== t.label) renameMutation.mutate({ id: t.id, label: e.target.value.trim() }); }}
+                />
+                <button
+                  onClick={() => toggleMutation.mutate({ id: t.id, active: !t.active })}
+                  className="text-xs text-gray-500 hover:underline w-20 text-center"
+                >
+                  {t.active ? 'Activo' : 'Inactivo'}
+                </button>
+                <button onClick={() => { if (confirm('¿Eliminar este tipo?')) deleteMutation.mutate(t.id); }} className="btn-ghost p-1.5 text-red-400">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AssetModal({ asset, onClose }) {
   const queryClient = useQueryClient();
@@ -47,6 +114,10 @@ function AssetModal({ asset, onClose }) {
   const { data: agents = [] } = useQuery({
     queryKey: ['agents-list'],
     queryFn: () => api.get('/agents', { params: { limit: 100 } }).then(r => r.data?.agents || []),
+  });
+  const { data: assetTypes = [] } = useQuery({
+    queryKey: ['asset-types'],
+    queryFn: () => api.get('/asset-types').then(r => r.data?.types || []),
   });
 
   const mutation = useMutation({
@@ -81,7 +152,7 @@ function AssetModal({ asset, onClose }) {
             <div>
               <label className="label">Tipo</label>
               <select className="input" value={form.type} onChange={e => set('type', e.target.value)}>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {assetTypes.map(t => <option key={t.id} value={t.key}>{t.label}</option>)}
               </select>
             </div>
             <div>
@@ -163,6 +234,7 @@ function AssetModal({ asset, onClose }) {
 
 export default function AssetList() {
   const [modal, setModal] = useState(null);
+  const [showTypes, setShowTypes] = useState(false);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const queryClient = useQueryClient();
@@ -171,6 +243,12 @@ export default function AssetList() {
     queryKey: ['assets', search, typeFilter],
     queryFn: () => api.get('/assets', { params: { search, type: typeFilter } }).then(r => r.data),
   });
+
+  const { data: assetTypes = [] } = useQuery({
+    queryKey: ['asset-types', 'all'],
+    queryFn: () => api.get('/asset-types', { params: { active: 'all' } }).then(r => r.data?.types || []),
+  });
+  const typeLabel = (key) => assetTypes.find(t => t.key === key)?.label || key;
 
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/assets/${id}`),
@@ -186,9 +264,14 @@ export default function AssetList() {
           <h1 className="text-2xl font-bold text-gray-900">Activos (CMDB)</h1>
           <p className="text-sm text-gray-500">Inventario de equipos y su relación con tickets</p>
         </div>
-        <button onClick={() => setModal({})} className="btn-primary">
-          <Plus size={16} /> Nuevo Activo
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowTypes(true)} className="btn-ghost">
+            <Tags size={16} /> Tipos de activos
+          </button>
+          <button onClick={() => setModal({})} className="btn-primary">
+            <Plus size={16} /> Nuevo Activo
+          </button>
+        </div>
       </div>
 
       <div className="card p-3 flex flex-wrap gap-3 items-center">
@@ -203,7 +286,7 @@ export default function AssetList() {
         </div>
         <select className="input h-9 text-sm w-auto" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
           <option value="">Todos los tipos</option>
-          {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {assetTypes.map(t => <option key={t.id} value={t.key}>{t.label}</option>)}
         </select>
       </div>
 
@@ -230,7 +313,7 @@ export default function AssetList() {
                   <Link to={`/assets/${a.id}`} className="font-medium text-gray-900 hover:text-primary-600">{a.name}</Link>
                   <p className="text-xs text-gray-400">{a.brand} {a.model}</p>
                 </td>
-                <td className="px-4 py-3 text-xs text-gray-600">{TYPE_LABELS[a.type] || a.type}</td>
+                <td className="px-4 py-3 text-xs text-gray-600">{typeLabel(a.type)}</td>
                 <td className="px-4 py-3 text-xs text-gray-600">{a.branch?.name || '—'}</td>
                 <td className="px-4 py-3 text-xs text-gray-600">{a.owner?.name || '—'}</td>
                 <td className="px-4 py-3">
@@ -261,6 +344,7 @@ export default function AssetList() {
       </div>
 
       {modal !== null && <AssetModal asset={modal} onClose={() => setModal(null)} />}
+      {showTypes && <AssetTypesModal onClose={() => setShowTypes(false)} />}
     </div>
   );
 }

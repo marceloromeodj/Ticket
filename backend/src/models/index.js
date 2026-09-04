@@ -35,6 +35,7 @@ const ScheduledReport  = require('./ScheduledReport')(sequelize);
 const Vendor           = require('./Vendor')(sequelize);
 const Contract         = require('./Contract')(sequelize);
 const ApiToken         = require('./ApiToken')(sequelize);
+const AssetType        = require('./AssetType')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -208,6 +209,10 @@ Company.hasMany(ApiToken, { foreignKey: 'company_id', as: 'apiTokens' });
 ApiToken.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 ApiToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 
+// ─── Tipos de activo configurables ─────────────────────────────────
+Company.hasMany(AssetType, { foreignKey: 'company_id', as: 'assetTypes' });
+AssetType.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
 // ─── Normalización de UUIDs vacíos ─────────────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
 // "Sin asignar"/"Todas"/"Ninguna", pero esas columnas son UUID: Postgres
@@ -221,7 +226,7 @@ const allModels = [
   Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
   Asset, TicketAsset, Problem, ChangeRequest, TicketSurvey, AuditLog,
   Service, MaintenancePlan, MaintenanceLog, NotificationChannel, ScheduledReport,
-  Vendor, Contract, ApiToken,
+  Vendor, Contract, ApiToken, AssetType,
 ];
 allModels.forEach((model) => {
   const uuidAttrs = Object.entries(model.rawAttributes)
@@ -271,4 +276,5 @@ module.exports = {
   Vendor,
   Contract,
   ApiToken,
+  AssetType,
 };

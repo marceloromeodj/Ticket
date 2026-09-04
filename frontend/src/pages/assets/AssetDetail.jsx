@@ -27,12 +27,6 @@ function AssetBarcode({ value }) {
   return <canvas ref={canvasRef} />;
 }
 
-const TYPE_LABELS = {
-  pc: 'PC', notebook: 'Notebook', server: 'Servidor', vm: 'Máquina virtual',
-  printer: 'Impresora', switch: 'Switch', router: 'Router', firewall: 'Firewall',
-  ap: 'Access Point', ups: 'UPS', camera: 'Cámara', phone: 'Teléfono', other: 'Otro',
-};
-
 function PlanModal({ assetId, onClose }) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
@@ -191,6 +185,12 @@ export default function AssetDetail() {
   });
   const plans = plansData?.plans || [];
 
+  const { data: assetTypes = [] } = useQuery({
+    queryKey: ['asset-types', 'all'],
+    queryFn: () => api.get('/asset-types', { params: { active: 'all' } }).then(r => r.data?.types || []),
+  });
+  const typeLabel = (key) => assetTypes.find(t => t.key === key)?.label || key;
+
   const qrUrl = `${window.location.origin}/assets/${id}`;
 
   if (isLoading) return <div className="text-center text-gray-400 py-16">Cargando...</div>;
@@ -210,7 +210,7 @@ export default function AssetDetail() {
         <div className="card p-5 col-span-2 space-y-3">
           <h2 className="font-semibold text-gray-900">Información</h2>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div><span className="text-gray-500">Tipo</span><p className="font-medium">{TYPE_LABELS[asset.type] || asset.type}</p></div>
+            <div><span className="text-gray-500">Tipo</span><p className="font-medium">{typeLabel(asset.type)}</p></div>
             <div><span className="text-gray-500">Estado</span><p className="font-medium capitalize">{asset.status}</p></div>
             <div><span className="text-gray-500">Marca / Modelo</span><p className="font-medium">{asset.brand} {asset.model}</p></div>
             <div><span className="text-gray-500">Nº de serie</span><p className="font-medium">{asset.serial_number || '—'}</p></div>
