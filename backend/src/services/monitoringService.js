@@ -20,6 +20,7 @@
  */
 const { sequelize, Ticket, TicketMessage } = require('../models');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+const { getInitialStatusKey, getKeysByCategory, isFinalStatus } = require('./ticketStatusService');
 
 const SEVERITY_TO_PRIORITY = {
   info: 'low', information: 'low', 'not classified': 'low',
@@ -46,8 +47,9 @@ const monitoringService = {
 
     if (status === 'resolved') {
       if (!existing) return { action: 'ignored', reason: 'no había ticket abierto para esa alerta' };
-      if (['resolved', 'closed'].includes(existing.status)) return { action: 'ignored', reason: 'el ticket ya estaba resuelto' };
+      if (await isFinalStatus(company.id, existing.status)) return { action: 'ignored', reason: 'el ticket ya estaba resuelto' };
 
+      const [resolvedKey] = await getKeysByCategory(company.id, ['resolved']);
       await TicketMessage.create({
         ticket_id: existing.id,
         author_type: 'system',
@@ -55,12 +57,12 @@ const monitoringService = {
         message_type: 'activity_log',
         channel: 'api',
       });
-      await existing.update({ status: 'resolved', resolved_at: new Date() });
+      await existing.update({ status: resolvedKey || 'resolved', resolved_at: new Date() });
       return { action: 'resolved', ticket_id: existing.id };
     }
 
     // status === 'problem'
-    if (existing && !['resolved', 'closed'].includes(existing.status)) {
+    if (existing && !(await isFinalStatus(company.id, existing.status))) {
       // Ya hay un ticket abierto para esta misma alerta: no duplicar.
       return { action: 'already_open', ticket_id: existing.id };
     }
@@ -68,6 +70,7 @@ const monitoringService = {
     const t = await sequelize.transaction();
     try {
       const ticket_number = await getNextTicketNumber(company.id, t);
+      const initialStatus = await getInitialStatusKey(company.id);
       const ticket = await Ticket.create({
         company_id:  company.id,
         ticket_number,
@@ -75,7 +78,7 @@ const monitoringService = {
         description: message || '',
         source:      'api',
         type:        'incident',
-        status:      'open',
+        status:      initialStatus,
         priority:    mapSeverity(severity),
         requester_name: source === 'zabbix' ? 'Zabbix' : source === 'prtg' ? 'PRTG' : 'Monitoreo',
         external_source:   source || null,

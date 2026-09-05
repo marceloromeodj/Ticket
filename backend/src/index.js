@@ -50,6 +50,7 @@ const contractRoutes    = require('./routes/contracts');
 const apiTokenRoutes    = require('./routes/apiTokens');
 const assetTypeRoutes   = require('./routes/assetTypes');
 const notificationTemplateRoutes = require('./routes/notificationTemplates');
+const ticketStatusRoutes = require('./routes/ticketStatuses');
 const externalRoutes    = require('./routes/external');
 const swaggerUi         = require('swagger-ui-express');
 const openapiSpec       = require('./config/openapi');
@@ -147,6 +148,7 @@ app.use(`${api}/contracts`,    contractRoutes);
 app.use(`${api}/api-tokens`,   apiTokenRoutes);
 app.use(`${api}/asset-types`,  assetTypeRoutes);
 app.use(`${api}/notification-templates`, notificationTemplateRoutes);
+app.use(`${api}/ticket-statuses`, ticketStatusRoutes);
 app.use(`${api}/external`,     externalRoutes);
 app.use(`${api}/docs`,         swaggerUi.serve, swaggerUi.setup(openapiSpec));
 

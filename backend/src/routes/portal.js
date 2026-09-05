@@ -7,6 +7,7 @@ const { sequelize, Ticket, TicketMessage, KnowledgeArticle, Category, User, Chat
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+const { getInitialStatusKey, isFinalStatus } = require('../services/ticketStatusService');
 
 // ─── Encuesta de satisfacción (CSAT) ──────────────────────────────
 // Público de verdad: el token de la encuesta es la única identidad
@@ -133,6 +134,7 @@ router.post('/tickets', async (req, res, next) => {
     }
 
     const ticket_number = await getNextTicketNumber(req.portalCompanyId, t);
+    const initialStatus = await getInitialStatusKey(req.portalCompanyId);
 
     const ticket = await Ticket.create({
       company_id:      req.portalCompanyId,
@@ -141,7 +143,7 @@ router.post('/tickets', async (req, res, next) => {
       description,
       priority,
       source:          'web',
-      status:          'open',
+      status:          initialStatus,
       requester_id:    req.portalUser?.id,
       requester_name:  finalName,
       requester_email: finalEmail,
@@ -240,8 +242,9 @@ router.post('/tickets/:id/reply', async (req, res, next) => {
       channel:      'web',
     });
 
-    if (['resolved','closed'].includes(ticket.status)) {
-      await ticket.update({ status: 'open', resolved_at: null, reopen_count: ticket.reopen_count + 1 });
+    if (await isFinalStatus(ticket.company_id, ticket.status)) {
+      const reopenStatus = await getInitialStatusKey(ticket.company_id);
+      await ticket.update({ status: reopenStatus, resolved_at: null, reopen_count: ticket.reopen_count + 1 });
     }
 
     res.status(201).json(message);

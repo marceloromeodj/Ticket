@@ -7,6 +7,7 @@ const { buildReportWorkbook, buildReportPDF } = require('../services/reportExpor
 const { notificationChannelService } = require('../services/notificationChannelService');
 const { runBackup } = require('../scripts/backup');
 const { renderTemplate } = require('../services/templateService');
+const { getNonFinalKeys } = require('../services/ticketStatusService');
 const { AutomationRule, Ticket, ScheduledReport, Contract, User, Company } = require('../models');
 const { Op } = require('sequelize');
 
@@ -49,7 +50,7 @@ function startCronJobs() {
         const where = {
           company_id: rule.company_id,
           [tc.field]: { [Op.lt]: threshold },
-          status:     { [Op.notIn]: ['resolved', 'closed'] },
+          status:     { [Op.in]: await getNonFinalKeys(rule.company_id) },
         };
         if (tc.status_is) where.status = tc.status_is;
 

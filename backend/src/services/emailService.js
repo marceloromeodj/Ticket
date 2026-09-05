@@ -4,6 +4,7 @@ const { simpleParser } = require('mailparser');
 const { sequelize, EmailInbox, Ticket, TicketMessage, Company } = require('../models');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
 const { decrypt } = require('../utils/crypto');
+const { getInitialStatusKey, isFinalStatus } = require('./ticketStatusService');
 
 // Transporte por defecto (se sobreescribe por bandeja de entrada)
 function createTransport(inbox) {
@@ -178,15 +179,17 @@ const emailService = {
         email_message_id: messageId,
       });
 
-      // Si estaba resuelto, reabrirlo
-      if (['resolved', 'closed'].includes(ticket.status)) {
-        await ticket.update({ status: 'open', resolved_at: null, reopen_count: ticket.reopen_count + 1 });
+      // Si estaba resuelto/cerrado, reabrirlo
+      if (await isFinalStatus(ticket.company_id, ticket.status)) {
+        const reopenStatus = await getInitialStatusKey(ticket.company_id);
+        await ticket.update({ status: reopenStatus, resolved_at: null, reopen_count: ticket.reopen_count + 1 });
       }
     } else {
       // Crear nuevo ticket (numeración segura bajo concurrencia)
       const t = await sequelize.transaction();
       try {
         const ticket_number = await getNextTicketNumber(inbox.company_id, t);
+        const initialStatus = await getInitialStatusKey(inbox.company_id);
 
         const newTicket = await Ticket.create({
           company_id:      inbox.company_id,
@@ -195,7 +198,7 @@ const emailService = {
           subject,
           description:     content,
           source:          'email',
-          status:          'open',
+          status:          initialStatus,
           priority:        'medium',
           requester_name:  fromName,
           requester_email: fromEmail,

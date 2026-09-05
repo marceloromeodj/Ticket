@@ -26,6 +26,7 @@ import ChangeList    from './pages/changes/ChangeList';
 import AuditLogPage  from './pages/audit/AuditLogPage';
 import Profile       from './pages/Profile';
 import ContractList  from './pages/contracts/ContractList';
+import TicketBoard   from './pages/board/TicketBoard';
 
 function PrivateRoute({ children, roles }) {
   const { user, token } = useAuthStore();
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index                element={<Dashboard />} />
           <Route path="tickets"       element={<TicketList />} />
+          <Route path="board"         element={<TicketBoard />} />
           <Route path="tickets/new"   element={<NewTicket />} />
           <Route path="tickets/:id"   element={<TicketDetail />} />
           <Route path="agents"        element={<PrivateRoute roles={['super_admin','admin','supervisor']}><AgentList /></PrivateRoute>} />

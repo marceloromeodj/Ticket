@@ -2,6 +2,7 @@ const moment = require('moment-timezone');
 const { SLAPolicy, Ticket, Company } = require('../models');
 const { Op } = require('sequelize');
 const { addBusinessMinutes } = require('../utils/businessHours');
+const { getNonFinalKeys } = require('./ticketStatusService');
 
 const slaService = {
   /**
@@ -63,55 +64,62 @@ const slaService = {
 
   /**
    * Actualizar el estado SLA de todos los tickets abiertos
-   * (ejecutado por cron job cada 15 minutos)
+   * (ejecutado por cron job cada 15 minutos). Se procesa empresa por
+   * empresa porque qué estados cuentan como "no resuelto" es
+   * configurable por empresa (ver ticketStatusService) -- ya no es un
+   * NOT IN ('resolved','closed') global y fijo.
    */
   async updateSLAStatuses() {
     const now = new Date();
+    const companies = await Company.findAll({ attributes: ['id'], where: { active: true } });
 
-    // Breached: pasó la fecha límite de resolución y no está resuelto.
-    // Se buscan primero (en vez de un UPDATE directo) para poder avisar
-    // por los canales de notificación configurados de cada empresa.
-    const toBreach = await Ticket.findAll({
-      where: {
-        status:             { [Op.notIn]: ['resolved', 'closed'] },
-        resolution_due_at:  { [Op.lt]: now },
-        sla_policy_id:      { [Op.ne]: null },
-        sla_status:         { [Op.ne]: 'breached' },
-      },
-      attributes: ['id', 'company_id', 'ticket_number', 'subject'],
-    });
+    for (const { id: companyId } of companies) {
+      const nonFinalKeys = await getNonFinalKeys(companyId);
+      if (nonFinalKeys.length === 0) continue;
 
-    if (toBreach.length > 0) {
-      await Ticket.update(
-        { sla_status: 'breached' },
-        { where: { id: { [Op.in]: toBreach.map(t => t.id) } } }
-      );
+      // Breached: pasó la fecha límite de resolución y no está resuelto.
+      // Se buscan primero (en vez de un UPDATE directo) para poder avisar
+      // por los canales de notificación de la empresa.
+      const toBreach = await Ticket.findAll({
+        where: {
+          company_id:         companyId,
+          status:             { [Op.in]: nonFinalKeys },
+          resolution_due_at:  { [Op.lt]: now },
+          sla_policy_id:      { [Op.ne]: null },
+          sla_status:         { [Op.ne]: 'breached' },
+        },
+        attributes: ['id', 'ticket_number', 'subject'],
+      });
 
-      const { notificationChannelService } = require('./notificationChannelService');
-      const { renderTemplate } = require('./templateService');
-      const byCompany = {};
-      toBreach.forEach(t => { (byCompany[t.company_id] = byCompany[t.company_id] || []).push(t); });
-      for (const [companyId, tickets] of Object.entries(byCompany)) {
-        const ticket_list = tickets.slice(0, 5).map(t => `#${t.ticket_number} (${t.subject})`).join(', ');
-        renderTemplate(companyId, 'sla_breach', { count: tickets.length, ticket_list })
+      if (toBreach.length > 0) {
+        await Ticket.update(
+          { sla_status: 'breached' },
+          { where: { id: { [Op.in]: toBreach.map(t => t.id) } } }
+        );
+
+        const { notificationChannelService } = require('./notificationChannelService');
+        const { renderTemplate } = require('./templateService');
+        const ticket_list = toBreach.slice(0, 5).map(t => `#${t.ticket_number} (${t.subject})`).join(', ');
+        renderTemplate(companyId, 'sla_breach', { count: toBreach.length, ticket_list })
           .then(text => notificationChannelService.broadcast(companyId, 'sla_breach', text))
           .catch(err => console.error('[SLA] Error notificando canales:', err.message));
       }
-    }
 
-    // Warning: dentro de 30 minutos del vencimiento
-    const warningThreshold = moment().add(30, 'minutes').toDate();
-    await Ticket.update(
-      { sla_status: 'warning' },
-      {
-        where: {
-          status:            { [Op.notIn]: ['resolved', 'closed'] },
-          resolution_due_at: { [Op.between]: [now, warningThreshold] },
-          sla_policy_id:     { [Op.ne]: null },
-          sla_status:        'ok',
-        },
-      }
-    );
+      // Warning: dentro de 30 minutos del vencimiento
+      const warningThreshold = moment().add(30, 'minutes').toDate();
+      await Ticket.update(
+        { sla_status: 'warning' },
+        {
+          where: {
+            company_id:        companyId,
+            status:            { [Op.in]: nonFinalKeys },
+            resolution_due_at: { [Op.between]: [now, warningThreshold] },
+            sla_policy_id:     { [Op.ne]: null },
+            sla_status:        'ok',
+          },
+        }
+      );
+    }
 
     console.log(`[SLA] Estados actualizados: ${new Date().toISOString()}`);
   },

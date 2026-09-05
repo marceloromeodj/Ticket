@@ -19,16 +19,18 @@ const massIncidentService = {
     const { notificationService } = require('./notificationService');
     const { notificationChannelService } = require('./notificationChannelService');
     const { renderTemplate } = require('./templateService');
+    const { getNonFinalKeys } = require('./ticketStatusService');
 
     const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000);
     const orConditions = [];
     if (ticket.category_id) orConditions.push({ category_id: ticket.category_id });
     if (ticket.service_id)  orConditions.push({ service_id: ticket.service_id });
 
+    const nonFinalKeys = await getNonFinalKeys(ticket.company_id);
     const similar = await Ticket.findAll({
       where: {
         company_id: ticket.company_id,
-        status: { [Op.notIn]: ['resolved', 'closed'] },
+        status: { [Op.in]: nonFinalKeys },
         created_at: { [Op.gte]: windowStart },
         [Op.or]: orConditions,
       },

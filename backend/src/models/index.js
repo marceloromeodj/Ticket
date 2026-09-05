@@ -37,6 +37,7 @@ const Contract         = require('./Contract')(sequelize);
 const ApiToken         = require('./ApiToken')(sequelize);
 const AssetType        = require('./AssetType')(sequelize);
 const NotificationTemplate = require('./NotificationTemplate')(sequelize);
+const TicketStatus     = require('./TicketStatus')(sequelize);
 
 // ─── Asociaciones ────────────────────────────────────────────────
 
@@ -218,6 +219,10 @@ AssetType.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 Company.hasMany(NotificationTemplate, { foreignKey: 'company_id', as: 'notificationTemplates' });
 NotificationTemplate.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
+// ─── Estados de ticket configurables ────────────────────────────────
+Company.hasMany(TicketStatus, { foreignKey: 'company_id', as: 'ticketStatuses' });
+TicketStatus.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
+
 // ─── Normalización de UUIDs y fechas vacíos ────────────────────────
 // Los <select> del frontend mandan "" cuando queda en una opción tipo
 // "Sin asignar"/"Todas"/"Ninguna" (columnas UUID), y los <input type="date">
@@ -235,7 +240,7 @@ const allModels = [
   Notification, EmailInbox, ChatSession, ChatMessage, CustomField, UserBranch,
   Asset, TicketAsset, Problem, ChangeRequest, TicketSurvey, AuditLog,
   Service, MaintenancePlan, MaintenanceLog, NotificationChannel, ScheduledReport,
-  Vendor, Contract, ApiToken, AssetType, NotificationTemplate,
+  Vendor, Contract, ApiToken, AssetType, NotificationTemplate, TicketStatus,
 ];
 allModels.forEach((model) => {
   const emptyToNullAttrs = Object.entries(model.rawAttributes)
@@ -287,4 +292,5 @@ module.exports = {
   ApiToken,
   AssetType,
   NotificationTemplate,
+  TicketStatus,
 };

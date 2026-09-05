@@ -14,10 +14,6 @@ import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';
 import { socket } from '../../components/Layout';
 
-const STATUS_LABELS = {
-  open: 'Abierto', pending: 'Pendiente',
-  waiting_customer: 'Esperando cliente', resolved: 'Resuelto', closed: 'Cerrado',
-};
 const PRIORITY_LABELS = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
 const TYPE_LABELS = {
   question: 'Pregunta', incident: 'Incidente', problem: 'Problema',
@@ -160,6 +156,15 @@ export default function TicketDetail() {
       queryClient.invalidateQueries(['ticket', id]);
       toast.success('Ticket actualizado');
     },
+    onError: (e) => {
+      toast.error(e.response?.data?.error || 'No se pudo actualizar el ticket');
+      queryClient.invalidateQueries(['ticket', id]);
+    },
+  });
+
+  const { data: ticketStatuses = [] } = useQuery({
+    queryKey: ['ticket-statuses'],
+    queryFn: () => api.get('/ticket-statuses').then(r => r.data?.statuses || []),
   });
 
   const { data: allProblems = [] } = useQuery({
@@ -228,12 +233,15 @@ export default function TicketDetail() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs text-gray-400 font-mono">#{ticket.ticket_number}</span>
-            <span className={clsx('badge', {
-              'badge-open': ticket.status === 'open',
-              'badge-pending': ticket.status === 'pending',
-              'badge-resolved': ticket.status === 'resolved',
-              'badge-closed': ticket.status === 'closed',
-            })}>{STATUS_LABELS[ticket.status]}</span>
+            <span
+              className="badge"
+              style={(() => {
+                const s = ticketStatuses.find(s => s.key === ticket.status);
+                return s ? { backgroundColor: `${s.color}20`, color: s.color } : undefined;
+              })()}
+            >
+              {ticketStatuses.find(s => s.key === ticket.status)?.label || ticket.status}
+            </span>
             <span className={clsx('badge', {
               'badge-urgent': ticket.priority === 'urgent',
               'badge-high': ticket.priority === 'high',
@@ -255,7 +263,10 @@ export default function TicketDetail() {
             onChange={e => updateMutation.mutate({ status: e.target.value })}
             className="input h-8 text-sm"
           >
-            {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {!ticketStatuses.some(s => s.key === ticket.status) && (
+              <option value={ticket.status}>{ticket.status}</option>
+            )}
+            {ticketStatuses.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
           <select
             value={ticket.priority}

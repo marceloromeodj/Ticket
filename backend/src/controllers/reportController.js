@@ -2,6 +2,7 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize, Ticket, TicketMessage, User, Category, TicketSurvey } = require('../models');
 const moment = require('moment-timezone');
 const { companyScope } = require('../middleware/auth');
+const { getNonFinalKeys } = require('../services/ticketStatusService');
 
 // ─── Overview / Dashboard stats ─────────────────────────────────
 async function overview(req, res, next) {
@@ -14,6 +15,18 @@ async function overview(req, res, next) {
     const where = { ...companyScope(req), created_at: { [Op.between]: [from_, to_] } };
     if (branch_id) where.branch_id = branch_id;
 
+    // Nota: by_status cuenta contra las claves por defecto (open/pending/
+    // resolved/closed). Si la empresa personalizó sus estados (Configuración
+    // > Estados) con claves distintas, este desglose puntual queda en 0 para
+    // las que ya no existan -- el resto de la app (SLA, encuesta, apertura/
+    // cierre real) sí resuelve la categoría dinámicamente, ver
+    // ticketStatusService.
+    // Vista global de super_admin sin empresa seleccionada: no hay una
+    // sola configuración de estados a resolver, se usa el fallback fijo.
+    const urgentOpenWhere = req.companyId
+      ? { [Op.in]: await getNonFinalKeys(req.companyId) }
+      : { [Op.notIn]: ['resolved', 'closed'] };
+
     const [
       total, open, pending, resolved, closed,
       urgentOpen, slaBreached,
@@ -23,7 +36,7 @@ async function overview(req, res, next) {
       Ticket.count({ where: { ...where, status: 'pending' } }),
       Ticket.count({ where: { ...where, status: 'resolved' } }),
       Ticket.count({ where: { ...where, status: 'closed' } }),
-      Ticket.count({ where: { ...where, priority: 'urgent', status: { [Op.notIn]: ['resolved','closed'] } } }),
+      Ticket.count({ where: { ...where, priority: 'urgent', status: urgentOpenWhere } }),
       Ticket.count({ where: { ...where, sla_status: 'breached' } }),
     ]);
 

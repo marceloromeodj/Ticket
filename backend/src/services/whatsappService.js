@@ -5,6 +5,7 @@
 const axios = require('axios');
 const { sequelize, Ticket, TicketMessage } = require('../models');
 const { getNextTicketNumber } = require('../utils/ticketNumber');
+const { getInitialStatusKey, getKeysByCategory } = require('./ticketStatusService');
 
 const WA_API_BASE = 'https://graph.facebook.com/v18.0';
 
@@ -105,11 +106,12 @@ const whatsappService = {
         const name    = contact?.profile?.name || from;
 
         // Buscar ticket existente por chat ID, dentro de la misma empresa
+        const closedKeys = await getKeysByCategory(companyId, ['closed']);
         let ticket = await Ticket.findOne({
           where: {
             whatsapp_chat_id: from,
             company_id: companyId,
-            status: { [require('sequelize').Op.notIn]: ['closed'] },
+            ...(closedKeys.length > 0 && { status: { [require('sequelize').Op.notIn]: closedKeys } }),
           },
           order: [['created_at', 'DESC']],
         });
@@ -118,12 +120,13 @@ const whatsappService = {
           const t = await sequelize.transaction();
           try {
             const ticket_number = await getNextTicketNumber(companyId, t);
+            const initialStatus = await getInitialStatusKey(companyId);
             ticket = await Ticket.create({
               company_id:      companyId,
               ticket_number,
               subject:         `WhatsApp: ${name} - ${content?.substring(0, 100)}`,
               source:          'whatsapp',
-              status:          'open',
+              status:          initialStatus,
               priority:        'medium',
               requester_name:  name,
               requester_phone: from,

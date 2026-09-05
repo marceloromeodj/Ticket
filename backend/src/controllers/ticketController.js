@@ -12,6 +12,7 @@ const { surveyService }      = require('../services/surveyService');
 const { notificationChannelService } = require('../services/notificationChannelService');
 const { massIncidentService } = require('../services/massIncidentService');
 const { renderTemplate } = require('../services/templateService');
+const { getStatuses, getInitialStatusKey, isTransitionAllowed, isFinalStatus } = require('../services/ticketStatusService');
 
 // Reemplaza la URL pública guardada por una URL firmada de corta duración,
 // generada recién ahora que ya se validó que el usuario tiene acceso al
@@ -223,6 +224,7 @@ async function create(req, res, next) {
     // Resolver SLA
     const slaPolicy = await slaService.findApplicablePolicy(req.companyId, { priority, category_id, source });
     const slaDates  = slaPolicy ? await slaService.calculateDueDates(slaPolicy, priority, req.companyId) : {};
+    const initialStatus = await getInitialStatusKey(req.companyId);
 
     const ticket = await Ticket.create({
       company_id:    req.companyId,
@@ -232,6 +234,7 @@ async function create(req, res, next) {
       description,
       priority,
       type,
+      status:        initialStatus,
       category_id,
       service_id,
       source,
@@ -359,20 +362,35 @@ async function update(req, res, next) {
       return res.status(400).json({ error: 'El agente no pertenece a esta empresa' });
     }
 
-    // Tracking de resolución/cierre
-    if (changes.status === 'resolved' && !ticket.resolved_at)  changes.resolved_at = new Date();
-    if (changes.status === 'closed'   && !ticket.closed_at)    changes.closed_at   = new Date();
-    if (['open','pending'].includes(changes.status) && ticket.resolved_at) {
-      changes.resolved_at = null;
-      changes.reopen_count = ticket.reopen_count + 1;
+    // Cambio de estado: valida contra el flujo configurado (Configuración
+    // > Estados) y resuelve la categoría del estado nuevo/viejo en vez de
+    // comparar contra strings fijos -- el estado puede ser cualquiera que
+    // la empresa haya definido.
+    let statusCategory = null;
+    if (changes.status !== undefined && changes.status !== ticket.status) {
+      const allowed = await isTransitionAllowed(ticket.company_id, ticket.status, changes.status);
+      if (!allowed) {
+        return res.status(400).json({ error: `No se puede pasar de "${ticket.status}" a "${changes.status}" según el flujo configurado` });
+      }
+      const statuses = await getStatuses(ticket.company_id);
+      statusCategory = statuses.find(s => s.key === changes.status)?.category || 'open';
+      const prevCategory = statuses.find(s => s.key === ticket.status)?.category || 'open';
+
+      if (statusCategory === 'resolved' && !ticket.resolved_at) changes.resolved_at = new Date();
+      if (statusCategory === 'closed' && !ticket.closed_at) changes.closed_at = new Date();
+      if (statusCategory === 'open' && prevCategory !== 'open' && ticket.resolved_at) {
+        changes.resolved_at = null;
+        changes.reopen_count = ticket.reopen_count + 1;
+      }
     }
 
     await ticket.update(changes);
     await logAudit(req, { action: 'update', entity_type: 'Ticket', entity_id: ticket.id, before: { status: prev.status, priority: prev.priority, agent_id: prev.agent_id }, after: { status: ticket.status, priority: ticket.priority, agent_id: ticket.agent_id } });
 
     // Encuesta de satisfacción: se dispara la primera vez que el ticket
-    // pasa a resuelto/cerrado (surveyService no duplica si ya existe una).
-    if (prev.status !== ticket.status && ['resolved', 'closed'].includes(ticket.status)) {
+    // pasa a una categoría resuelto/cerrado (surveyService no duplica si
+    // ya existe una).
+    if (prev.status !== ticket.status && (statusCategory === 'resolved' || statusCategory === 'closed')) {
       surveyService.maybeCreateSurvey(ticket).catch(err => console.error('[Survey] Error:', err.message));
     }
 
@@ -466,10 +484,10 @@ async function addMessage(req, res, next) {
     if (!ticket.first_responded_at && req.user.role !== 'customer') {
       updates.first_responded_at = new Date();
     }
-    // Si el cliente respondió, reabrir si estaba resuelto
-    if (req.user.role === 'customer' && ['resolved', 'closed'].includes(ticket.status)) {
-      updates.status     = 'open';
-      updates.resolved_at = null;
+    // Si el cliente respondió, reabrir si estaba resuelto/cerrado
+    if (req.user.role === 'customer' && await isFinalStatus(ticket.company_id, ticket.status)) {
+      updates.status       = await getInitialStatusKey(ticket.company_id);
+      updates.resolved_at  = null;
       updates.reopen_count = ticket.reopen_count + 1;
     }
     await ticket.update(updates);
@@ -531,9 +549,39 @@ async function bulkUpdate(req, res, next) {
       return res.status(400).json({ error: 'El agente no pertenece a esta empresa' });
     }
 
+    // El cambio de estado masivo valida el flujo por ticket (cada uno
+    // puede estar en un estado distinto con reglas distintas) y necesita
+    // resolved_at/closed_at/reopen_count igual que el cambio individual,
+    // así que se procesa aparte en vez de un UPDATE directo.
+    if (action === 'status') {
+      const tickets = await Ticket.findAll({ where, attributes: ['id', 'company_id', 'status', 'resolved_at', 'reopen_count'] });
+      const blocked = [];
+      for (const ticket of tickets) {
+        if (ticket.status === value) continue;
+        if (!(await isTransitionAllowed(ticket.company_id, ticket.status, value))) {
+          blocked.push(ticket.id);
+          continue;
+        }
+        const statuses = await getStatuses(ticket.company_id);
+        const category = statuses.find(s => s.key === value)?.category || 'open';
+        const prevCategory = statuses.find(s => s.key === ticket.status)?.category || 'open';
+        const changes = { status: value };
+        if (category === 'resolved') changes.resolved_at = new Date();
+        if (category === 'open' && prevCategory !== 'open' && ticket.resolved_at) {
+          changes.resolved_at = null;
+          changes.reopen_count = ticket.reopen_count + 1;
+        }
+        await ticket.update(changes);
+      }
+      emitToCompany(req.companyId, 'tickets:bulk_updated', { ticket_ids, action, value });
+      return res.json({
+        updated: tickets.length - blocked.length,
+        ...(blocked.length > 0 && { blocked, message: `${blocked.length} ticket(s) no se movieron: transición no permitida por el flujo configurado` }),
+      });
+    }
+
     const actionMap = {
       assign:   { agent_id:  value },
-      status:   { status:    value },
       priority: { priority:  value },
       spam:     { spam:      true  },
       archive:  { archived:  true  },

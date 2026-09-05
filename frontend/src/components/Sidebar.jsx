@@ -5,13 +5,14 @@ import {
   LayoutDashboard, Ticket, Users, Building2, GitBranch,
   BarChart2, BookOpen, Settings, ChevronLeft, ChevronRight,
   Database, AlertOctagon, GitPullRequest, ShieldCheck, LayoutGrid, LogOut,
-  FileText, UserCog,
+  FileText, UserCog, Kanban,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const NAV = [
   { to: '/',          label: 'Dashboard',       icon: LayoutDashboard, exact: true },
   { to: '/tickets',   label: 'Tickets',          icon: Ticket },
+  { to: '/board',     label: 'Tablero',          icon: Kanban },
   { to: '/knowledge', label: 'Base de Conocimiento', icon: BookOpen, module: 'knowledge' },
   { type: 'divider' },
   { to: '/services',  label: 'Catálogo de servicios', icon: LayoutGrid, roles: ['super_admin','admin','supervisor'], module: 'services' },

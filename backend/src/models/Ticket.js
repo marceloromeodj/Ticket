@@ -18,11 +18,12 @@ module.exports = (sequelize) => sequelize.define('Ticket', {
   },
   description: DataTypes.TEXT,
 
-  // Estado del ticket
-  status: {
-    type: DataTypes.ENUM('open', 'pending', 'waiting_customer', 'resolved', 'closed'),
-    defaultValue: 'open',
-  },
+  // Estado del ticket -- antes un ENUM fijo, ahora una referencia liviana
+  // (no FK estricta) a TicketStatus.key, configurable por empresa desde
+  // Configuración > Estados. Ver services/ticketStatusService.js para la
+  // lógica de negocio (SLA, encuesta, reapertura) que depende de la
+  // categoría del estado, no del string en sí.
+  status: { type: DataTypes.STRING(50), defaultValue: 'open' },
   priority: {
     type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
     defaultValue: 'medium',

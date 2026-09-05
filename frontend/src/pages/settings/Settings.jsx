@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet, Key, Eye, EyeOff, CalendarOff, FileText, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Mail, Shield, Zap, Clock, Activity, Copy, RefreshCw, Send, FileSpreadsheet, Key, Eye, EyeOff, CalendarOff, FileText, RotateCcw, ListOrdered } from 'lucide-react';
 import api from '../../api/axios';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -9,6 +10,7 @@ import { clsx } from 'clsx';
 const TABS = [
   { id: 'general', label: 'General', icon: Shield },
   { id: 'sla', label: 'Políticas SLA', icon: Clock },
+  { id: 'statuses', label: 'Estados', icon: ListOrdered },
   { id: 'automation', label: 'Automatizaciones', icon: Zap, module: 'automation' },
   { id: 'inboxes', label: 'Bandejas Email', icon: Mail },
   { id: 'channels', label: 'Notificaciones', icon: Send, module: 'channels' },
@@ -1225,6 +1227,150 @@ function ApiTokenSettings() {
   );
 }
 
+// ─── Estados de ticket y flujo permitido ──────────────────────────────────────
+const CATEGORY_LABELS = { open: 'Abierto (SLA corriendo)', resolved: 'Resuelto (dispara encuesta)', closed: 'Cerrado' };
+
+function StatusModal({ status, allStatuses, onClose }) {
+  const queryClient = useQueryClient();
+  const isEdit = !!status?.id;
+  const [label, setLabel] = useState(status?.label || '');
+  const [color, setColor] = useState(status?.color || '#6b7280');
+  const [category, setCategory] = useState(status?.category || 'open');
+  const [isInitial, setIsInitial] = useState(status?.is_initial || false);
+  const [allowedNext, setAllowedNext] = useState(status?.allowed_next || []);
+
+  const mutation = useMutation({
+    mutationFn: () => isEdit
+      ? api.put(`/ticket-statuses/${status.id}`, { label, color, category, is_initial: isInitial, allowed_next: allowedNext })
+      : api.post('/ticket-statuses', { label, color, category }),
+    onSuccess: () => { queryClient.invalidateQueries(['ticket-statuses']); toast.success(isEdit ? 'Estado actualizado' : 'Estado creado'); onClose(); },
+    onError: e => toast.error(e.response?.data?.error || 'Error'),
+  });
+
+  const toggleNext = (key) => setAllowedNext(list => list.includes(key) ? list.filter(k => k !== key) : [...list, key]);
+  const otherStatuses = allStatuses.filter(s => s.key !== status?.key);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">{isEdit ? 'Editar estado' : 'Nuevo estado'}</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }} className="p-6 space-y-4">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="label">Nombre *</label>
+              <input required className="input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ej: Esperando repuesto" />
+            </div>
+            <div>
+              <label className="label">Color</label>
+              <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-9 w-12 rounded border border-gray-200 cursor-pointer" />
+            </div>
+          </div>
+          <div>
+            <label className="label">Categoría</label>
+            <select className="input" value={category} onChange={e => setCategory(e.target.value)}>
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Define si cuenta como ticket activo para el SLA y si dispara la encuesta de satisfacción al llegar.</p>
+          </div>
+          {isEdit && (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={isInitial} onChange={e => setIsInitial(e.target.checked)} className="rounded" />
+                <span className="text-sm text-gray-700">Estado inicial de un ticket nuevo</span>
+              </label>
+              <div>
+                <p className="label mb-2">Se puede mover a...</p>
+                {otherStatuses.length === 0 ? (
+                  <p className="text-xs text-gray-400">No hay otros estados todavía</p>
+                ) : (
+                  <div className="space-y-1">
+                    {otherStatuses.map(s => (
+                      <label key={s.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={allowedNext.includes(s.key)} onChange={() => toggleNext(s.key)} className="rounded" />
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                        {s.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-2">Sin nada marcado = se permite mover a cualquier estado (sin restricción).</p>
+              </div>
+            </>
+          )}
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+            <button type="submit" disabled={mutation.isLoading || !label.trim()} className="btn-primary">
+              {mutation.isLoading ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function StatusSettings() {
+  const queryClient = useQueryClient();
+  const [modal, setModal] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['ticket-statuses', 'all'],
+    queryFn: () => api.get('/ticket-statuses', { params: { active: 'all' } }).then(r => r.data),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, active }) => api.put(`/ticket-statuses/${id}`, { active }),
+    onSuccess: () => queryClient.invalidateQueries(['ticket-statuses']),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.delete(`/ticket-statuses/${id}`),
+    onSuccess: ({ data }) => { queryClient.invalidateQueries(['ticket-statuses']); toast.success(data.message); },
+  });
+
+  const statuses = data?.statuses || [];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-gray-500">
+        Definí los estados por los que pasa un ticket (más allá de los 5 iniciales) y, en cada uno, a cuáles se puede mover desde ahí. Usalos en el{' '}
+        <a href="/board" className="text-primary-600 hover:underline">Tablero</a>.
+      </p>
+      <div className="flex justify-end">
+        <button onClick={() => setModal({})} className="btn-primary"><Plus size={16} /> Nuevo estado</button>
+      </div>
+      <div className="space-y-2">
+        {isLoading && <div className="text-center text-gray-400 py-6">Cargando...</div>}
+        {statuses.map(s => (
+          <div key={s.id} className={clsx('card p-4 flex items-center justify-between', !s.active && 'opacity-50')}>
+            <div className="flex items-center gap-3">
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+              <div>
+                <p className="font-medium text-gray-900 flex items-center gap-2">
+                  {s.label}
+                  {s.is_initial && <span className="text-xs font-normal text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded">Inicial</span>}
+                </p>
+                <p className="text-xs text-gray-400">{CATEGORY_LABELS[s.category]} · clave: {s.key}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => toggleMutation.mutate({ id: s.id, active: !s.active })} className="text-xs text-gray-500 hover:underline w-16 text-center">
+                {s.active ? 'Activo' : 'Inactivo'}
+              </button>
+              <button onClick={() => setModal(s)} className="btn-ghost p-1.5"><Pencil size={14} /></button>
+              <button onClick={() => { if (confirm('¿Eliminar este estado?')) deleteMutation.mutate(s.id); }} className="btn-ghost p-1.5 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {modal !== null && <StatusModal status={modal} allStatuses={statuses} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
 // ─── Plantillas de notificación ──────────────────────────────────────────────
 function TemplateModal({ template, onClose }) {
   const queryClient = useQueryClient();
@@ -1319,13 +1465,14 @@ function TemplateSettings() {
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function Settings() {
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('general');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'general');
   const modules = user?.company?.modules;
   const visibleTabs = TABS.filter(t => !t.module || user?.role === 'super_admin' || modules?.[t.module] !== false);
   const ActiveTab = {
     general: GeneralSettings, sla: SLASettings, automation: AutomationSettings, inboxes: InboxSettings,
     channels: ChannelSettings, 'scheduled-reports': ScheduledReportSettings,
-    api: ApiTokenSettings, templates: TemplateSettings,
+    api: ApiTokenSettings, templates: TemplateSettings, statuses: StatusSettings,
   }[visibleTabs.some(t => t.id === activeTab) ? activeTab : 'general'];
 
   return (
